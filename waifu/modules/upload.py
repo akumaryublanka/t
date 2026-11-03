@@ -31,7 +31,7 @@ from waifu.modules.auto_delete import delete_now
 
 RARITY_MAP  = Config.RARITY_MAP
 RARITY_STRS = {v.lower(): v for v in RARITY_MAP.values()}  # e.g. "legendary" → "🟡 Legendary"
-RARITY_ALIASES = {"🎄 christmas": RARITY_MAP[28], "christmas": RARITY_MAP[28]}
+RARITY_ALIASES = {"🎄 christmas": RARITY_MAP[13], "christmas": RARITY_MAP[13]}
 
 WRONG_FORMAT = (
     "❌ Wrong format\n\n"
@@ -40,7 +40,7 @@ WRONG_FORMAT = (
     "<b>Main rarities:</b>\n"
     + "\n".join(f"  {k} → {RARITY_MAP[k]}" for k in sorted(RARITY_MAP) if k <= 10)
     + "\n\n<b>🎉 Event rarities:</b>\n"
-    + "\n".join(f"  {k} → {RARITY_MAP[k]}" for k in sorted(RARITY_MAP) if k >= 26)
+    + "\n".join(f"  {k} → {RARITY_MAP[k]}" for k in sorted(RARITY_MAP) if k >= 11)
 )
 
 
