@@ -56,12 +56,12 @@ class Config:
         8: "💮 Special Edition",
         9: "🔮 Limited Edition",
         10: "🔞 Extreme",
-        26: "❄️ Winter",
-        27: "☀️ Summer",
-        28: "🏅 Elite",
-        29: "🎭 Cosplay",
-        30: "🎃 Halloween",
-        31: "💝 Valentine's",
+        11: "❄️ Winter",
+        12: "☀️ Summer",
+        13: "🏅 Elite",
+        14: "🎭 Cosplay",
+        15: "🎃 Halloween",
+        16: "💝 Valentine's",
     }
 
     @classmethod
