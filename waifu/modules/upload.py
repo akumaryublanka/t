@@ -31,15 +31,16 @@ from waifu.modules.auto_delete import delete_now
 
 RARITY_MAP  = Config.RARITY_MAP
 RARITY_STRS = {v.lower(): v for v in RARITY_MAP.values()}  # e.g. "legendary" → "🟡 Legendary"
+RARITY_ALIASES = {"🎄 christmas": RARITY_MAP[28], "christmas": RARITY_MAP[28]}
 
 WRONG_FORMAT = (
     "❌ Wrong format\n\n"
     "Reply to an image and send:\n"
     "<code>/upload character-name anime-name rarity_number</code>\n\n"
     "<b>Main rarities:</b>\n"
-    + "\n".join(f"  {k} → {v}" for k, v in RARITY_MAP.items() if k <= 10)
+    + "\n".join(f"  {k} → {RARITY_MAP[k]}" for k in sorted(RARITY_MAP) if k <= 10)
     + "\n\n<b>🎉 Event rarities:</b>\n"
-    + "\n".join(f"  {k} → {v}" for k, v in RARITY_MAP.items() if k >= 26)
+    + "\n".join(f"  {k} → {RARITY_MAP[k]}" for k in sorted(RARITY_MAP) if k >= 26)
 )
 
 
@@ -176,7 +177,7 @@ def _parse_caption(caption: str) -> dict | None:
         return None
 
     raw_rarity = fields.get("rarity", "").lower()
-    rarity = RARITY_STRS.get(raw_rarity)
+    rarity = RARITY_STRS.get(raw_rarity) or RARITY_ALIASES.get(raw_rarity)
     if not rarity:
         for key, val in RARITY_STRS.items():
             if raw_rarity in key or key in raw_rarity:
