@@ -58,7 +58,7 @@ class Config:
         10: "🔞 Extreme",
         26: "❄️ Winter",
         27: "☀️ Summer",
-        28: "🎄 Christmas",
+        28: "🏅 Elite",
         29: "🎭 Cosplay",
         30: "🎃 Halloween",
         31: "💝 Valentine's",
