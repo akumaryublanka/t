@@ -37,38 +37,190 @@ def _welcome(first_name: str, user_id: int) -> str:
 
 
 HELP = (
-    "📚 <b>𝗪𝗔𝗜𝗙𝗨𝗛𝗨𝗕 𝗚𝗨𝗜𝗗𝗘</b>\n"
-    "<i>Your quick guide to the hunt.</i>\n"
-    "━━━━━━━━━━━━━━━━━━━━\n\n"
-    "<b>🎴 CATCH & COLLECT</b>\n"
-    "/guess — Claim the active character\n"
-    "/harem — Browse your collection\n"
-    "/check — View character details\n"
-    "/profile — View your stats and level\n"
-    "/rarity — View your rarity collection\n"
-    "/hclaim — Claim a daily free character\n\n"
-    "<b>💰 COINS & MARKET</b>\n"
-    "/daily — Collect daily coins\n"
-    "/balance — Check your balance\n"
-    "/market — Browse character listings\n"
-    "/sell — List a character for sale\n"
-    "/buy — Purchase a listing\n"
-    "/exchange — Exchange credits and shards\n\n"
-    "<b>⚔️ PLAY WITH FRIENDS</b>\n"
-    "/duel — Challenge a player (reply)\n"
-    "/trade — Trade characters\n"
-    "/gift — Send a character\n"
-    "/marry — Propose marriage (reply)\n"
-    "/spouse — View your spouse\n"
-    "/divorce — End a marriage\n"
-    "/couple — Reveal the couple of the day\n\n"
-    "<b>🎮 MINI GAMES & RANKS</b>\n"
-    "/quiz — Anime quiz (available group only)\n"
-    "/nguess — Start name guessing\n"
-    "/top — Top collectors\n"
-    "/ctop — Group leaderboard\n\n"
-    "<i>Tip: Add the bot to your group to start character drops!</i>"
+    "📚 <b>WAIFUHUB COMMAND CENTER</b>\\n"
+    "<i>Choose a category to explore every command.</i>\\n"
+    "━━━━━━━━━━━━━━━━━━━━"
 )
+
+HELP_CATEGORIES = {
+    "game": {
+        "title": "🎴 Game & Collection",
+        "intro": "Catch drops, build your collection and manage your favourite characters.",
+        "commands": [
+            {"key": "guess", "label": "🎯 /guess", "usage": "/guess character-name",
+             "description": "Guess the name of the character currently dropped in the group. Be quick — the first correct guess claims it.",
+             "note": "Use the character's name after the command. Example: /guess Naruto."},
+            {"key": "harem", "label": "💗 /harem", "usage": "/harem",
+             "description": "Open your collection and browse the characters you have collected. The list is paginated."},
+            {"key": "fav", "label": "⭐ /fav", "usage": "/fav character_id",
+             "description": "Set one of your collected characters as your favourite. You must own that character ID."},
+            {"key": "check", "label": "🔎 /check", "usage": "/check character_id",
+             "description": "Look up a character by ID to view its name, anime, rarity and image."},
+            {"key": "hclaim", "label": "🎁 /hclaim", "usage": "/hclaim",
+             "description": "Claim one free character every 24 hours.",
+             "note": "This command only works in the configured claim group."},
+            {"key": "profile", "label": "👤 /profile", "usage": "/profile",
+             "description": "View your player profile, level, XP, coins, collection size and rarity breakdown."},
+        ],
+    },
+    "economy": {
+        "title": "💰 Economy",
+        "intro": "Earn Grey Credits, manage your balance and use the character marketplace.",
+        "commands": [
+            {"key": "daily", "label": "🪙 /daily", "usage": "/daily",
+             "description": "Collect your daily Grey Credit reward. The reward follows the bot's daily cooldown."},
+            {"key": "weekly", "label": "🚧 /weekly", "usage": "Not available",
+             "description": "A weekly bonus command was included in the old help text, but this repository version does not currently register a /weekly command.",
+             "note": "Not active yet — this button is informational only.", "available": False},
+            {"key": "balance", "label": "💳 /balance", "usage": "/balance",
+             "description": "Check your current in-game balance."},
+            {"key": "market", "label": "🛒 /market", "usage": "/market",
+             "description": "Browse character listings available for purchase in the marketplace."},
+            {"key": "sell", "label": "🏷️ /sell", "usage": "/sell character_id price",
+             "description": "Put one of your characters up for sale. Enter the character ID and the price you want."},
+            {"key": "buy", "label": "🛍️ /buy", "usage": "/buy listing_id",
+             "description": "Purchase a marketplace listing using its listing ID. You need enough Grey Credits."},
+        ],
+    },
+    "games": {
+        "title": "🎮 Games",
+        "intro": "Play group mini-games, test your anime knowledge and compete with others.",
+        "commands": [
+            {"key": "quiz", "label": "🧠 /quiz", "usage": "/quiz easy  |  /quiz medium  |  /quiz hard",
+             "description": "Start an anime character image quiz. Choose a difficulty and answer the multiple-choice rounds.",
+             "note": "Only works in the configured quiz group."},
+            {"key": "nguess", "label": "🎯 /nguess", "usage": "/nguess",
+             "description": "Start the name-guessing game. Type the character's name when each image appears.",
+             "note": "Only works in the configured game group."},
+            {"key": "ship", "label": "🚧 /ship", "usage": "Not available",
+             "description": "A /ship compatibility command appeared in the old help text, but this repository version does not currently register a /ship command.",
+             "note": "Not active yet — this button is informational only.", "available": False},
+        ],
+    },
+    "social": {
+        "title": "⚔️ Social",
+        "intro": "Interact with other players through marriage, trading, gifting and duels.",
+        "commands": [
+            {"key": "marry", "label": "💍 /marry", "usage": "Reply to a user with /marry",
+             "description": "Send a marriage proposal to the user whose message you replied to."},
+            {"key": "divorce", "label": "💔 /divorce", "usage": "/divorce",
+             "description": "End your current in-game marriage."},
+            {"key": "couple", "label": "💕 /couple", "usage": "/couple",
+             "description": "Reveal the group's Couple of the Day, selected from players active in that group.",
+             "note": "Works in groups, not in private chat."},
+            {"key": "trade", "label": "🔄 /trade", "usage": "Reply to a user: /trade YOUR_ID THEIR_ID",
+             "description": "Propose swapping one of your characters for one owned by another player. The other player can accept or reject the offer."},
+            {"key": "gift", "label": "🎁 /gift", "usage": "Reply to a user: /gift CHARACTER_ID",
+             "description": "Offer one of your collected characters as a gift to the user you replied to."},
+            {"key": "duel", "label": "⚡ /duel", "usage": "Reply to a user with /duel",
+             "description": "Challenge another player to a character duel. Both players choose a character and the bot calculates the result."},
+        ],
+    },
+    "leaderboards": {
+        "title": "🏆 Leaderboards",
+        "intro": "See who is collecting the most characters.",
+        "commands": [
+            {"key": "top", "label": "🥇 /top", "usage": "/top",
+             "description": "Show the top 10 collectors across the bot."},
+            {"key": "ctop", "label": "🏅 /ctop", "usage": "/ctop",
+             "description": "Show the top collectors in the current group."},
+            {"key": "topgroups", "label": "🌐 /TopGroups", "usage": "/TopGroups",
+             "description": "Show the most active groups leaderboard."},
+        ],
+    },
+    "settings": {
+        "title": "⚙️ Group Settings",
+        "intro": "Group admins can control how often character drops appear.",
+        "commands": [
+            {"key": "changetime", "label": "⏱️ /changetime", "usage": "/changetime number",
+             "description": "Set how many group messages are needed before the next character drop.",
+             "note": "Group admins only. Allowed values: 5 to 10,000."},
+            {"key": "resettime", "label": "♻️ /resettime", "usage": "/resettime",
+             "description": "Reset the group's drop frequency to the bot's default setting.",
+             "note": "Group admins only. Use this in a group."},
+        ],
+    },
+}
+
+
+def _help_home_keyboard() -> InlineKeyboardMarkup:
+    rows = []
+    category_items = list(HELP_CATEGORIES.items())
+    for index in range(0, len(category_items), 2):
+        row = []
+        for key, category in category_items[index:index + 2]:
+            row.append(InlineKeyboardButton(
+                category["title"], callback_data=f"help:category:{key}"
+            ))
+        rows.append(row)
+    rows.append([InlineKeyboardButton("🏠 Back to Welcome", callback_data="back")])
+    return InlineKeyboardMarkup(rows)
+
+
+def _help_category_keyboard(category_key: str) -> InlineKeyboardMarkup:
+    category = HELP_CATEGORIES[category_key]
+    commands = category["commands"]
+    rows = []
+    for index in range(0, len(commands), 2):
+        row = []
+        for command in commands[index:index + 2]:
+            prefix = "" if command.get("available", True) else "🚧 "
+            row.append(InlineKeyboardButton(
+                f"{prefix}{command['label']}",
+                callback_data=f"help:command:{category_key}:{command['key']}",
+            ))
+        rows.append(row)
+    rows.append([
+        InlineKeyboardButton("⬅️ Categories", callback_data="help:home"),
+        InlineKeyboardButton("🏠 Welcome", callback_data="back"),
+    ])
+    return InlineKeyboardMarkup(rows)
+
+
+def _help_command_keyboard(category_key: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "⬅️ Back to " + HELP_CATEGORIES[category_key]["title"],
+            callback_data=f"help:category:{category_key}",
+        )],
+        [InlineKeyboardButton("📚 All Help Categories", callback_data="help:home")],
+    ])
+
+
+def _help_category_text(category_key: str) -> str:
+    category = HELP_CATEGORIES[category_key]
+    return (
+        f"<b>{category['title']}</b>\\n"
+        f"<i>{category['intro']}</i>\\n"
+        "━━━━━━━━━━━━━━━━━━━━\\n"
+        "Select a command to see what it does and how to use it."
+    )
+
+
+def _help_command_text(category_key: str, command_key: str) -> str:
+    category = HELP_CATEGORIES[category_key]
+    command = next(
+        (item for item in category["commands"] if item["key"] == command_key),
+        None,
+    )
+    if command is None:
+        return "❌ This help option could not be found."
+
+    status = ""
+    if not command.get("available", True):
+        status = (
+            "\\n\\n🚧 <b>Not active in this bot version</b>\\n"
+            + command.get("note", "This command is not available yet.")
+        )
+    elif command.get("note"):
+        status = f"\\n\\nℹ️ <i>{command['note']}</i>"
+
+    return (
+        f"📘 <b>{command['label']}</b>\\n\\n"
+        f"{command['description']}\\n\\n"
+        f"⌨️ <b>Usage:</b> <code>{command['usage']}</code>"
+        f"{status}"
+    )
 
 
 def _kb(include_miniapp: bool = True, include_admin: bool = False) -> InlineKeyboardMarkup:
@@ -127,7 +279,7 @@ async def start(update: Update, context: CallbackContext) -> None:
 
 
 async def _edit_or_send(q, text: str, reply_markup: InlineKeyboardMarkup) -> None:
-    """Edit the existing welcome message, or send a new one if Telegram rejects the edit."""
+    """Edit the message containing the menu, or send a replacement if editing fails."""
     try:
         if q.message and q.message.caption is not None:
             await q.edit_message_caption(
@@ -139,14 +291,15 @@ async def _edit_or_send(q, text: str, reply_markup: InlineKeyboardMarkup) -> Non
             )
         return
     except Exception:
-        LOGGER.exception("Could not edit welcome screen; sending a replacement message.")
+        LOGGER.exception("Could not edit Help message; sending a replacement.")
 
     try:
-        await q.message.reply_text(
-            text, reply_markup=reply_markup, parse_mode=ParseMode.HTML
-        )
+        if q.message:
+            await q.message.reply_text(
+                text, reply_markup=reply_markup, parse_mode=ParseMode.HTML
+            )
     except Exception:
-        LOGGER.exception("Could not send replacement welcome/help message.")
+        LOGGER.exception("Could not send replacement Help message.")
 
 
 async def button(update: Update, context: CallbackContext) -> None:
@@ -157,19 +310,62 @@ async def button(update: Update, context: CallbackContext) -> None:
         LOGGER.debug("Callback query could not be acknowledged.", exc_info=True)
 
     user = q.from_user
-    back_kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("↩️ Back to welcome", callback_data="back")]
-    ])
+    data = q.data or ""
 
-    if q.data == "help":
-        await _edit_or_send(q, HELP, back_kb)
-    elif q.data == "owner":
+    if data in ("help", "help:home"):
+        await _edit_or_send(q, HELP, _help_home_keyboard())
+        return
+
+    if data.startswith("help:category:"):
+        category_key = data.split(":")[-1]
+        if category_key not in HELP_CATEGORIES:
+            await q.answer("This help category was not found.", show_alert=True)
+            return
+        category = HELP_CATEGORIES[category_key]
+        await _edit_or_send(
+            q,
+            _help_category_text(category_key),
+            _help_category_keyboard(category_key),
+        )
+        return
+
+    if data.startswith("help:command:"):
+        parts = data.split(":")
+        if len(parts) != 4:
+            await q.answer("Invalid help option.", show_alert=True)
+            return
+        _, _, category_key, command_key = parts
+        if category_key not in HELP_CATEGORIES:
+            await q.answer("This help category was not found.", show_alert=True)
+            return
+        command_exists = any(
+            item["key"] == command_key
+            for item in HELP_CATEGORIES[category_key]["commands"]
+        )
+        if not command_exists:
+            await q.answer("This command help was not found.", show_alert=True)
+            return
+        await _edit_or_send(
+            q,
+            _help_command_text(category_key, command_key),
+            _help_command_keyboard(category_key),
+        )
+        return
+
+    if data == "owner":
         owner_text = (
-            "👑 <b>BOT OWNER</b>\n\n"
+            "👑 <b>BOT OWNER</b>\\n\\n"
             f"<a href='tg://user?id={OWNER_ID}'>Tap here to contact the owner</a>"
         )
-        await _edit_or_send(q, owner_text, back_kb)
-    elif q.data == "back":
+        await _edit_or_send(
+            q, owner_text,
+            InlineKeyboardMarkup([[
+                InlineKeyboardButton("⬅️ Back to Welcome", callback_data="back")
+            ]]),
+        )
+        return
+
+    if data == "back":
         welcome_kb = _kb(
             include_miniapp=q.message.chat.type == "private",
             include_admin=user.id == OWNER_ID and q.message.chat.type == "private",
@@ -180,18 +376,19 @@ async def button(update: Update, context: CallbackContext) -> None:
 async def help_command(update: Update, context: CallbackContext) -> None:
     await update.effective_message.reply_text(
         HELP,
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("↩️ Back to welcome", callback_data="back")]
-        ]),
+        reply_markup=_help_home_keyboard(),
         parse_mode=ParseMode.HTML,
     )
 
-
 application.add_handler(CommandHandler("start", start, block=False))
 application.add_handler(CommandHandler("help", help_command, block=False))
-# Priority group ensures these buttons are handled before other callback handlers.
+# Help navigation runs before other callback handlers so every menu button responds.
 application.add_handler(
-    CallbackQueryHandler(button, pattern=r"^(help|back|owner)$", block=False),
+    CallbackQueryHandler(
+        button,
+        pattern=r"^(help(?::.*)?|back|owner)$",
+        block=False,
+    ),
     group=-1,
 )
             
