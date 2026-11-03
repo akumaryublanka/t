@@ -37,8 +37,8 @@ def _welcome(first_name: str, user_id: int) -> str:
 
 
 HELP = (
-    "📚 <b>WAIFUHUB COMMAND CENTER</b>\\n"
-    "<i>Choose a category to explore every command.</i>\\n"
+    "📚 <b>WAIFUHUB COMMAND CENTER</b>\n"
+    "<i>Choose a category to explore every command.</i>\n"
     "━━━━━━━━━━━━━━━━━━━━"
 )
 
@@ -190,9 +190,9 @@ def _help_command_keyboard(category_key: str) -> InlineKeyboardMarkup:
 def _help_category_text(category_key: str) -> str:
     category = HELP_CATEGORIES[category_key]
     return (
-        f"<b>{category['title']}</b>\\n"
-        f"<i>{category['intro']}</i>\\n"
-        "━━━━━━━━━━━━━━━━━━━━\\n"
+        f"<b>{category['title']}</b>\n"
+        f"<i>{category['intro']}</i>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
         "Select a command to see what it does and how to use it."
     )
 
@@ -209,15 +209,15 @@ def _help_command_text(category_key: str, command_key: str) -> str:
     status = ""
     if not command.get("available", True):
         status = (
-            "\\n\\n🚧 <b>Not active in this bot version</b>\\n"
+            "\n\n🚧 <b>Not active in this bot version</b>\n"
             + command.get("note", "This command is not available yet.")
         )
     elif command.get("note"):
-        status = f"\\n\\nℹ️ <i>{command['note']}</i>"
+        status = f"\n\nℹ️ <i>{command['note']}</i>"
 
     return (
-        f"📘 <b>{command['label']}</b>\\n\\n"
-        f"{command['description']}\\n\\n"
+        f"📘 <b>{command['label']}</b>\n\n"
+        f"{command['description']}\n\n"
         f"⌨️ <b>Usage:</b> <code>{command['usage']}</code>"
         f"{status}"
     )
@@ -354,7 +354,7 @@ async def button(update: Update, context: CallbackContext) -> None:
 
     if data == "owner":
         owner_text = (
-            "👑 <b>BOT OWNER</b>\\n\\n"
+            "👑 <b>BOT OWNER</b>\n\n"
             f"<a href='tg://user?id={OWNER_ID}'>Tap here to contact the owner</a>"
         )
         await _edit_or_send(
