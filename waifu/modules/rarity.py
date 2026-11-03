@@ -43,6 +43,8 @@ BAR_LENGTH = 12
 
 # Backward compatibility for character records using the old rarity labels.
 LEGACY_RARITY_MAP = {label: number for number, label in RARITY_MAP.items()}
+# Preserve rarity 28 for characters saved before Christmas was renamed to Elite.
+LEGACY_RARITY_MAP.update({"🎄 Christmas": 28, "Christmas": 28})
 
 
 def _bar(value: int, total: int) -> str:
