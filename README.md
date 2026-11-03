@@ -89,6 +89,18 @@ The /upload command uses these rarity numbers:
 | 15 | 🎃 Halloween |
 | 16 | 💝 Valentine's |
 
+To add a character, reply directly to its image with:
+
+```text
+/upload character-name anime-name rarity_number
+```
+
+Use hyphens for names containing spaces. Example:
+
+```text
+/upload eren-yeager attack-on-titan 13
+```
+
 ### Main rarity drop weights
 
 | Tier | Character rarity | Base drop weight |
