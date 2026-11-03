@@ -69,7 +69,7 @@ HELP_CATEGORIES = {
         "commands": [
             {"key": "daily", "label": "🪙 /daily", "usage": "/daily",
              "description": "Collect your daily Grey Credit reward. The reward follows the bot's daily cooldown."},
-            {"key": "weekly", "label": "🚧 /weekly", "usage": "Not available",
+            {"key": "weekly", "label": "/weekly", "usage": "Not available",
              "description": "A weekly bonus command was included in the old help text, but this repository version does not currently register a /weekly command.",
              "note": "Not active yet — this button is informational only.", "available": False},
             {"key": "balance", "label": "💳 /balance", "usage": "/balance",
@@ -92,7 +92,7 @@ HELP_CATEGORIES = {
             {"key": "nguess", "label": "🎯 /nguess", "usage": "/nguess",
              "description": "Start the name-guessing game. Type the character's name when each image appears.",
              "note": "Only works in the configured game group."},
-            {"key": "ship", "label": "🚧 /ship", "usage": "Not available",
+            {"key": "ship", "label": "/ship", "usage": "Not available",
              "description": "A /ship compatibility command appeared in the old help text, but this repository version does not currently register a /ship command.",
              "note": "Not active yet — this button is informational only.", "available": False},
         ],
