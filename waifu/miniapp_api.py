@@ -1934,7 +1934,7 @@ _DEFAULT_RARITIES = [
     {"emoji":"🏆","name":"Ultimate","weight":1,"enabled":True,"kind":"main"},
     {"emoji":"❄️","name":"Winter","weight":50,"enabled":True,"kind":"event"},
     {"emoji":"☀️","name":"Summer","weight":50,"enabled":True,"kind":"event"},
-    {"emoji":"🎄","name":"Christmas","weight":50,"enabled":True,"kind":"event"},
+    {"emoji":"🏅","name":"Elite","weight":50,"enabled":True,"kind":"event"},
     {"emoji":"🎭","name":"Cosplay","weight":50,"enabled":True,"kind":"event"},
     {"emoji":"🎃","name":"Halloween","weight":50,"enabled":True,"kind":"event"},
     {"emoji":"💝","name":"Valentine's","weight":50,"enabled":True,"kind":"event"},
@@ -1998,7 +1998,15 @@ def _merged_settings_value(category: str, stored: dict | None) -> dict | list:
         return default
     value = stored.get("data")
     if category in ("rarities", "events"):
-        return value if isinstance(value, list) else default
+        if not isinstance(value, list):
+            return default
+        if category == "rarities":
+            value = copy.deepcopy(value)
+            for item in value:
+                if isinstance(item, dict) and str(item.get("name", "")).strip().casefold() == "christmas":
+                    item["name"] = "Elite"
+                    item["emoji"] = "🏅"
+        return value
     if not isinstance(value, dict):
         return default
     result = dict(default)
