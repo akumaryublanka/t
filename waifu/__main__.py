@@ -136,11 +136,12 @@ async def _run_bot() -> None:
 
 def main() -> None:
     try:
-        asyncio.get_event_loop().run_until_complete(_run_bot())
+        # Create and manage the event loop explicitly. Python 3.14 no longer
+        # creates a default loop for asyncio.get_event_loop() in this context.
+        asyncio.run(_run_bot())
     except KeyboardInterrupt:
         LOGGER.info("Bot stopped by user.")
 
 
 if __name__ == "__main__":
     main()
-    
