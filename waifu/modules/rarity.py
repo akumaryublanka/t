@@ -2,8 +2,9 @@
 modules/rarity.py — /rarity command
 Shows rarity counts, percentages, and estimated collection value.
 
+Rarity numbers are continuous: 1–16
 Main rarity numbers: 1–10
-Event rarity numbers: 26–31
+Event rarity numbers: 11–16
 See waifu.config.Config.RARITY_MAP for the complete list.
 """
 
@@ -31,20 +32,21 @@ VALUE_MAP = {
     8: 4000,
     9: 5000,
     10: 6500,
-    26: 7000,
-    27: 7000,
-    28: 7500,
-    29: 7000,
-    30: 7500,
-    31: 8000,
+    11: 7000,
+    12: 7000,
+    13: 7500,
+    14: 7000,
+    15: 7500,
+    16: 8000,
 }
 
 BAR_LENGTH = 12
 
 # Backward compatibility for character records using the old rarity labels.
 LEGACY_RARITY_MAP = {label: number for number, label in RARITY_MAP.items()}
-# Preserve rarity 28 for characters saved before Christmas was renamed to Elite.
-LEGACY_RARITY_MAP.update({"🎄 Christmas": 28, "Christmas": 28})
+# Preserve labels and numeric IDs from the previous event-rarity numbering.
+LEGACY_RARITY_MAP.update({"🎄 Christmas": 13, "Christmas": 13})
+LEGACY_RARITY_NUMBERS = {26: 11, 27: 12, 28: 13, 29: 14, 30: 15, 31: 16}
 
 
 def _bar(value: int, total: int) -> str:
@@ -63,11 +65,11 @@ def _percent(value: int, total: int) -> str:
 def _normalize_rarity(rarity) -> int:
     """Normalize numeric and string rarity values to a valid tier number."""
     if isinstance(rarity, int) and not isinstance(rarity, bool):
-        return rarity if rarity in RARITY_MAP else 1
+        return rarity if rarity in RARITY_MAP else LEGACY_RARITY_NUMBERS.get(rarity, 1)
     value = str(rarity).strip()
     if value.isdigit():
         numeric = int(value)
-        return numeric if numeric in RARITY_MAP else 1
+        return numeric if numeric in RARITY_MAP else LEGACY_RARITY_NUMBERS.get(numeric, 1)
     return LEGACY_RARITY_MAP.get(value, 1)
 
 
