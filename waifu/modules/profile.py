@@ -193,7 +193,7 @@ async def profile(update: Update, context: CallbackContext) -> None:
 
     text = (
         f"╔══════════════════════╗\n"
-        f"  🌸 <b>𝗪𝗮𝗶𝗳𝘂𝗛𝘂𝗯 𝗣𝗿𝗼𝗳𝗶𝗹𝗲</b>\n"
+        f"  🌸 <b>𝗡𝗲𝗸𝗼𝗩𝗲𝗿𝘀𝗲 𝗣𝗿𝗼𝗳𝗶𝗹𝗲</b>\n"
         f"╚══════════════════════╝\n\n"
         f"👤 <b>{first_name}</b>  <code>{tag}</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
