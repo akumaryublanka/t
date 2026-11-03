@@ -12,8 +12,8 @@ from waifu import application, user_collection, collection, db
 from waifu.modules.auto_delete import schedule_delete, HCLAIM_DELAY
 from waifu.config import Config
 
-ALLOWED_GROUP_ID   = -1004385116091
-ALLOWED_GROUP_LINK = "https://t.me/KyaHiNaamRakhein"
+ALLOWED_GROUP_ID   = -1003852394368
+ALLOWED_GROUP_LINK = "https://t.me/MeowGang_FriendsChatting_Group"
 
 hclaim_col = db["hclaim_cooldowns"]
 
