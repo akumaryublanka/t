@@ -31,43 +31,35 @@ _RARITY_WEIGHT_BY_ID = {
     8: 2,
     9: 1,
     10: 0.5,
-    11: 0.4,
-    12: 0.35,
-    13: 0.3,
-    14: 0.25,
-    15: 0.2,
-    16: 0.15,
-    17: 0.12,
-    18: 0.1,
-    19: 0.08,
-    20: 0.06,
-    21: 0.05,
-    22: 0.04,
-    23: 0.03,
-    24: 0.02,
-    25: 0.01,
-    26: 0.5,
-    27: 0.5,
-    28: 0.5,
-    29: 0.5,
-    30: 0.5,
-    31: 0.5,
+    11: 0.5,
+    12: 0.5,
+    13: 0.5,
+    14: 0.5,
+    15: 0.5,
+    16: 0.5,
 }
 RARITY_WEIGHTS = {
     RARITY_MAP[number]: weight
     for number, weight in _RARITY_WEIGHT_BY_ID.items()
     if number in RARITY_MAP
 }
+_LEGACY_RARITY_NUMBERS = {26: 11, 27: 12, 28: 13, 29: 14, 30: 15, 31: 16}
+_LEGACY_RARITY_LABELS = {"🎄 Christmas": RARITY_MAP[13], "Christmas": RARITY_MAP[13]}
 
 def _rarity_label(value) -> str:
     if isinstance(value, int) and not isinstance(value, bool):
-        return RARITY_MAP.get(value, "⚪ Common")
+        number = value if value in RARITY_MAP else _LEGACY_RARITY_NUMBERS.get(value)
+        return RARITY_MAP.get(number, "⚪ Common")
     if isinstance(value, str):
+        value = value.strip()
         if value in RARITY_WEIGHTS:
             return value
-        # Accept numeric rarity strings stored by older uploads.
         if value.isdigit():
-            return RARITY_MAP.get(int(value), "⚪ Common")
+            number = int(value)
+            number = number if number in RARITY_MAP else _LEGACY_RARITY_NUMBERS.get(number)
+            return RARITY_MAP.get(number, "⚪ Common")
+        value = _LEGACY_RARITY_LABELS.get(value, value)
+        return value if value in RARITY_WEIGHTS else "⚪ Common"
     return "⚪ Common"
 
 
