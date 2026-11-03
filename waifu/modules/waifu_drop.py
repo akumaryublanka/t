@@ -103,6 +103,7 @@ RARITY_WEIGHTS = {
 }
 
 RARITY_NUMERIC_MAP = Config.RARITY_MAP
+_LEGACY_RARITY_LABELS = {"🎄 Christmas": Config.RARITY_MAP[28], "Christmas": Config.RARITY_MAP[28]}
 
 def _rarity_label(value) -> str:
     if isinstance(value, int) and not isinstance(value, bool):
@@ -111,6 +112,7 @@ def _rarity_label(value) -> str:
         value = value.strip()
         if value.isdigit():
             return RARITY_NUMERIC_MAP.get(int(value), "⚪ Common")
+        value = _LEGACY_RARITY_LABELS.get(value, value)
         return value if value in RARITY_WEIGHTS else "⚪ Common"
     return "⚪ Common"
 
