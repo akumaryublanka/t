@@ -14,14 +14,17 @@ from waifu.config import Config
 
 RARITY_MAP = Config.RARITY_MAP
 LABEL_TO_RARITY = {label.casefold(): number for number, label in RARITY_MAP.items()}
+LEGACY_RARITY_NUMBERS = {26: 11, 27: 12, 28: 13, 29: 14, 30: 15, 31: 16}
+LABEL_TO_RARITY.update({"🎄 christmas": 13, "christmas": 13})
 
 
 def _rarity_number(value) -> int:
-    if isinstance(value, int) and value in RARITY_MAP:
-        return value
+    if isinstance(value, int):
+        return value if value in RARITY_MAP else LEGACY_RARITY_NUMBERS.get(value, 1)
     raw = str(value or "").strip()
-    if raw.isdigit() and int(raw) in RARITY_MAP:
-        return int(raw)
+    if raw.isdigit():
+        number = int(raw)
+        return number if number in RARITY_MAP else LEGACY_RARITY_NUMBERS.get(number, 1)
     normalized = raw.casefold()
     if normalized in LABEL_TO_RARITY:
         return LABEL_TO_RARITY[normalized]
