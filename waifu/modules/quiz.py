@@ -17,7 +17,7 @@ from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler
 from waifu import application, collection, user_collection, db
 from waifu.modules.auto_delete import schedule_delete, QUIZ_DELAY
 
-_ALLOWED_GROUP         = -1004385116091
+_ALLOWED_GROUP         = -1003852394368
 quiz_scores_collection = db["quiz_scores"]
 
 DIFFICULTY = {
