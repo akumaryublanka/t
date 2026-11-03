@@ -14,7 +14,7 @@ from waifu.modules.auto_delete import schedule_delete, NGUESS_DELAY
 
 _COINS_REWARD  = 50
 _XP_REWARD     = 25
-_ALLOWED_GROUP = -1004385116091
+_ALLOWED_GROUP = -1003852394368
 _active_games: dict[int, dict] = {}
 
 
