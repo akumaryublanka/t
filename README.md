@@ -68,6 +68,29 @@
 
 ## 🎨 Rarity guide
 
+The /upload command uses these rarity numbers:
+
+| Number | Rarity |
+|:---:|---|
+| 1 | ⚪ Common |
+| 2 | 🟢 Medium |
+| 3 | 🟣 Rare |
+| 4 | 🔵 Epic |
+| 5 | 🟡 Legendary |
+| 6 | 🌟 Luminous |
+| 7 | 🎐 Celestial |
+| 8 | 💮 Special Edition |
+| 9 | 🔮 Limited Edition |
+| 10 | 🔞 Extreme |
+| 26 | ❄️ Winter |
+| 27 | ☀️ Summer |
+| 28 | 🏅 Elite |
+| 29 | 🎭 Cosplay |
+| 30 | 🎃 Halloween |
+| 31 | 💝 Valentine's |
+
+### Main rarity drop weights
+
 | Tier | Character rarity | Base drop weight |
 |:---:|---|---:|
 | ⚪ | Common | 40 |
