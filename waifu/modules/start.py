@@ -16,7 +16,7 @@ LOGGER = logging.getLogger(__name__)
 
 def _welcome(first_name: str, user_id: int) -> str:
     return (
-        f"🌸 <b>𝗪𝗔𝗜𝗙𝗨𝗛𝗨𝗕 𝗩𝗘𝗥𝗦𝗘</b>  💮\n"
+        f"🌸 <b>𝗡𝗘𝗞𝗢𝗩𝗘𝗥𝗦𝗘</b>  💮\n"
         f"<i>COLLECT ✦ TRADE ✦ DUEL ✦ DOMINATE</i>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👋 Hey, <a href='tg://user?id={user_id}'><b>{escape(first_name)}</b></a>!\n"
@@ -37,7 +37,7 @@ def _welcome(first_name: str, user_id: int) -> str:
 
 
 HELP = (
-    "📚 <b>WAIFUHUB COMMAND CENTER</b>\n"
+    "📚 <b>NEKOVERSE COMMAND CENTER</b>\n"
     "<i>Choose a category to explore every command.</i>\n"
     "━━━━━━━━━━━━━━━━━━━━"
 )
