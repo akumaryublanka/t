@@ -24,6 +24,8 @@ _MEDALS = {
     rarity: rarity.split(" ", 1)[0]
     for rarity in Config.RARITY_MAP.values()
 }
+# Keep old saved Christmas characters on their new Elite icon.
+_MEDALS["🎄 Christmas"] = "🏅"
 
 
 def _rarity_icon(rarity: str) -> str:
