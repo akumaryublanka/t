@@ -11,26 +11,15 @@ from telegram.constants import ParseMode
 from telegram.ext import CallbackContext, CommandHandler
 
 from waifu import application, user_collection, PHOTO_URL, db
+from waifu.config import Config
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  RARITY CONFIG
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-RARITY_MAP = {
-    1: "⚪ Common",
-    2: "🟢 Medium",
-    3: "🟣 Rare",
-    4: "🔵 Epic",
-    5: "🟡 Legendary",
-    6: "🌟 Luminous",
-    7: "🎐 Celestial",
-    8: "💮 Special Edition",
-    9: "🔮 Limited Edition",
-    10: "🔞 Extreme",
-}
-
-RARITY_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+RARITY_MAP = Config.RARITY_MAP
+RARITY_ORDER = list(RARITY_MAP)
 
 VALUE_MAP = {
     1: 100,
@@ -43,6 +32,12 @@ VALUE_MAP = {
     8: 4000,
     9: 5000,
     10: 6500,
+    11: 7000,
+    12: 7000,
+    13: 7500,
+    14: 7000,
+    15: 7500,
+    16: 8000,
 }
 
 RARITY_STARS = {
@@ -56,20 +51,17 @@ RARITY_STARS = {
     8: "★★★★★★★★☆",
     9: "★★★★★★★★★",
     10: "★★★★★★★★★★",
+    11: "★★★★★★★★★★",
+    12: "★★★★★★★★★★",
+    13: "★★★★★★★★★★",
+    14: "★★★★★★★★★★",
+    15: "★★★★★★★★★★",
+    16: "★★★★★★★★★★",
 }
 
-LEGACY_RARITY_MAP = {
-    "⚪ Common": 1,
-    "🟢 Medium": 2,
-    "🟣 Rare": 3,
-    "🔵 Epic": 4,
-    "🟡 Legendary": 5,
-    "🌟 Luminous": 6,
-    "🎐 Celestial": 7,
-    "💮 Special Edition": 8,
-    "🔮 Limited Edition": 9,
-    "🔞 Extreme": 10,
-}
+LEGACY_RARITY_MAP = {label: number for number, label in RARITY_MAP.items()}
+LEGACY_RARITY_MAP.update({"🎄 Christmas": 13, "Christmas": 13})
+LEGACY_RARITY_NUMBERS = {26: 11, 27: 12, 28: 13, 29: 14, 30: 15, 31: 16}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -106,8 +98,12 @@ def _level_title(level: int) -> str:
 
 def _get_rarity_num(rarity) -> int:
     if isinstance(rarity, int) and not isinstance(rarity, bool):
-        return rarity if rarity in RARITY_MAP else 1
-    return LEGACY_RARITY_MAP.get(str(rarity), 1)
+        return rarity if rarity in RARITY_MAP else LEGACY_RARITY_NUMBERS.get(rarity, 1)
+    value = str(rarity).strip()
+    if value.isdigit():
+        number = int(value)
+        return number if number in RARITY_MAP else LEGACY_RARITY_NUMBERS.get(number, 1)
+    return LEGACY_RARITY_MAP.get(value, 1)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
