@@ -166,34 +166,45 @@ async def tower_callback(update: Update, context: CallbackContext) -> None:
     if index < 0 or index >= len(session["choices"]):
         await query.answer("Invalid answer.", show_alert=True)
         return
+    if session.get("processing"):
+        await query.answer("This answer is already being processed.")
+        return
 
+    session["processing"] = True
     correct = index == session["correct_index"]
     completed_floor = session["floor"]
-    session["floor"] += 1
 
     if correct:
         reward = 15 + min(completed_floor * 3, 60)
         xp_reward = 5 + min(completed_floor, 10)
+        try:
+            await user_collection.update_one(
+                {"id": owner_id},
+                {
+                    "$inc": {
+                        "coins": reward,
+                        "xp": xp_reward,
+                        "tower_floors": 1,
+                    },
+                    "$max": {"tower_best_floor": completed_floor},
+                    "$set": {"username": user.username, "first_name": user.first_name},
+                    "$setOnInsert": {"characters": [], "wins": 0, "total_guesses": 0, "favorites": []},
+                },
+                upsert=True,
+            )
+        except Exception:
+            session["processing"] = False
+            await query.answer("Couldn't save this reward. Please tap again.", show_alert=True)
+            return
         session["earned"] += reward
         session["solved"] += 1
-        await user_collection.update_one(
-            {"id": owner_id},
-            {
-                "$inc": {
-                    "coins": reward,
-                    "xp": xp_reward,
-                    "tower_floors": 1,
-                },
-                "$max": {"tower_best_floor": completed_floor},
-                "$set": {"username": user.username, "first_name": user.first_name},
-                "$setOnInsert": {"characters": [], "wins": 0, "total_guesses": 0, "favorites": []},
-            },
-            upsert=True,
-        )
         note = f"✅ Correct! +{reward} 🟡 Neko Coins and +{xp_reward} XP."
     else:
         session["lives"] -= 1
         note = f"❌ Not quite. The answer was <b>{session['choices'][session['correct_index']]}</b>."
+
+    session["floor"] += 1
+    session["processing"] = False
 
     if session["lives"] <= 0:
         _sessions.pop(owner_id, None)
