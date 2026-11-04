@@ -375,7 +375,7 @@ async def api_market_buy(request: web.Request) -> web.Response:
     debit = await user_collection.update_one({"id": uid, "coins": {"$gte": price}}, {"$inc": {"coins": -price}, "$push": {"characters": listing["char"]}})
     if not debit.modified_count:
         await market_collection.insert_one(claimed)
-        raise web.HTTPPaymentRequired(text=json.dumps({"error": f"Not enough Grey Credits. Need {price:,} Grey Credits."}), content_type="application/json")
+        raise web.HTTPPaymentRequired(text=json.dumps({"error": f"Not enough 🟡 Neko Coins. Need {price:,} 🟡 Neko Coins."}), content_type="application/json")
     if seller_payout:
         await user_collection.update_one({"id": int(listing["seller_id"])}, {"$inc": {"coins": seller_payout}})
     return web.json_response({"ok": True, "message": "Character purchased!", "price": price, "market_fee": fee, "seller_payout": seller_payout})
@@ -419,7 +419,7 @@ async def api_store_buy(request: web.Request) -> web.Response:
     price = max(1, min(1_000_000_000, int(char.get("price", 1) or 1)))
     currency = char.get("currency") if char.get("currency") in {"coins", "grey_shards"} else "coins"
     balance_field = "grey_shards" if currency == "grey_shards" else "coins"
-    balance_label = "Grey Shards" if balance_field == "grey_shards" else "Grey Credits"
+    balance_label = "💎 Neko Gems" if balance_field == "grey_shards" else "🟡 Neko Coins"
     mode = char.get("purchase_mode") if char.get("purchase_mode") in {"multiple", "single"} else "multiple"
 
     # Claim one-time stock atomically before charging, preventing two buyers from
@@ -525,7 +525,7 @@ async def api_admin_store_characters(request: web.Request) -> web.Response:
     if price < 1 or price > 1_000_000_000:
         raise web.HTTPBadRequest(text=json.dumps({"error": "Price must be between 1 and 1,000,000,000."}), content_type="application/json")
     if currency not in {"coins", "grey_shards"}:
-        raise web.HTTPBadRequest(text=json.dumps({"error": "Choose Grey Credits or Grey Shards."}), content_type="application/json")
+        raise web.HTTPBadRequest(text=json.dumps({"error": "Choose 🟡 Neko Coins or 💎 Neko Gems."}), content_type="application/json")
     if mode not in {"multiple", "single"}:
         raise web.HTTPBadRequest(text=json.dumps({"error": "Choose multiple or single purchase mode."}), content_type="application/json")
     if image_ref.startswith("//"):
@@ -578,7 +578,7 @@ async def api_admin_store_character(request: web.Request) -> web.Response:
             updates["price"] = price
         if "currency" in body:
             if body["currency"] not in {"coins", "grey_shards"}:
-                raise ValueError("Choose Grey Credits or Grey Shards.")
+                raise ValueError("Choose 🟡 Neko Coins or 💎 Neko Gems.")
             updates["currency"] = body["currency"]
         if "purchase_mode" in body:
             if body["purchase_mode"] not in {"multiple", "single"}:
@@ -1898,7 +1898,7 @@ async def api_admin_adjust_coins(request: web.Request) -> web.Response:
         exists = await user_collection.find_one({"id": uid}, {"_id": 1})
         if not exists:
             raise web.HTTPNotFound(text=json.dumps({"error": "User not found."}), content_type="application/json")
-        raise web.HTTPBadRequest(text=json.dumps({"error": "User does not have enough Grey Credits for that deduction."}), content_type="application/json")
+        raise web.HTTPBadRequest(text=json.dumps({"error": "User does not have enough 🟡 Neko Coins for that deduction."}), content_type="application/json")
     await _write_admin_audit(actor, "user.coins", str(uid), {"delta": delta, "reason": reason})
     return web.json_response({"ok": True, "user_id": uid, "delta": delta})
 
