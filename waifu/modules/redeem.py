@@ -2,7 +2,7 @@
 modules/redeem.py
 
 Owner commands:
-/gencode coins <amount> <uses>      — Generate a coin redeem code
+/gencode coins <amount> <uses>      — Generate a Neko Coin redeem code
 /gencode char <character_id> <uses> — Generate a character redeem code
 
 User command:
@@ -81,9 +81,9 @@ async def gencode(update: Update, context: CallbackContext) -> None:
         })
 
         await update.message.reply_text(
-            f"✅ <b>Coin Code Generated!</b>\n\n"
+            f"✅ <b>Neko Coin Code Generated!</b>\n\n"
             f"🎟 Code: <code>{code}</code>\n"
-            f"💰 Coins: <b>{amount:,}</b>\n"
+            f"🟡 Neko Coins: <b>{amount:,}</b>\n"
             f"🔁 Uses: <b>{uses}</b>\n\n"
             f"Share this code with users!",
             parse_mode=ParseMode.HTML,
@@ -196,7 +196,7 @@ async def redeem(update: Update, context: CallbackContext) -> None:
         )
         await update.message.reply_text(
             f"🎉 <b>Code Redeemed!</b>\n\n"
-            f"💰 <b>+{amount:,} coins</b> added to your wallet!\n\n"
+            f"🟡 <b>+{amount:,} Neko Coins</b> added to your wallet!\n\n"
             f"🔁 Uses remaining: <b>{doc['uses_left'] - 1}</b>",
             parse_mode=ParseMode.HTML,
         )
