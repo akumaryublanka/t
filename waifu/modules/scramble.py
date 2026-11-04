@@ -4,7 +4,6 @@ The first correct guess in a chat wins the round.
 """
 import asyncio
 import random
-import re
 import time
 from html import escape
 
@@ -17,7 +16,7 @@ from waifu import application, collection, user_collection
 _sessions: dict[int, dict] = {}
 _last_started: dict[int, float] = {}
 _ROUND_SECONDS = 60
-_START_COOLDOWN = 20
+_START_COOLDOWN = 60
 _REWARD_COINS = 35
 _REWARD_XP = 12
 
