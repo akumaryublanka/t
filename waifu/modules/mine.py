@@ -1,11 +1,11 @@
 """
 modules/mines.py — Minesweeper Game
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• /mines        → Start game (500 Grey Credits entry)
+• /mines        → Start game (500 Neko Coins entry)
 • 4x4 grid, 3 mines hidden
 • 2 mine hits = Game Over
-• Reveal safe tiles to earn more Grey Credits
-• /cashout → Cash out your earned Grey Credits at any time
+• Reveal safe tiles to earn more Neko Coins
+• /cashout → Cash out your earned Neko Coins at any time
 
 Rewards:
   1-4  safe = 1.2x
@@ -116,7 +116,7 @@ def _game_text(user_name: str, game: dict) -> str:
             f"💣 <b>BOOM! Game Over!</b>\n\n"
             f"👤 {escape(user_name)}\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"₲ <b>{entry_fee} Grey Credits Lost</b>\n"
+            f"🟡 <b>{entry_fee} Neko Coins Lost</b>\n"
             f"✅ Safe tiles: <b>{safe}</b>\n"
             f"💣 Mine hits: <b>{hits}</b>\n\n"
             f"Better luck next time! 😢"
@@ -127,7 +127,7 @@ def _game_text(user_name: str, game: dict) -> str:
             f"👤 {escape(user_name)}\n"
             f"━━━━━━━━━━━━━━━━━━\n"
             f"✅ Safe tiles: <b>{safe}</b>\n"
-            f"🎁 Reward: <b>₲ {reward} Grey Credits</b> ({mult}x)\n\n"
+            f"🎁 Reward: <b>🟡 {reward} Neko Coins</b> ({mult}x)\n\n"
             f"🏆 Legend! You avoided all the mines!"
         )
 
@@ -135,10 +135,10 @@ def _game_text(user_name: str, game: dict) -> str:
         f"💣 <b>Minesweeper!</b>\n\n"
         f"👤 {escape(user_name)}\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"🎯 {MINE_COUNT} mines  |  Entry Fee: ₲ {entry_fee} Grey Credits\n"
+        f"🎯 {MINE_COUNT} mines  |  Entry Fee: 🟡 {entry_fee} Neko Coins\n"
         f"💣 {MAX_HITS} mine hits = Game Over!\n\n"
         f"<b>💎 Current Reward:</b>\n"
-        f"• {safe} safe = <b>₲ {reward} Grey Credits</b> ({mult}x)\n\n"
+        f"• {safe} safe = <b>🟡 {reward} Neko Coins</b> ({mult}x)\n\n"
         f"❤️ Lives: {'❤️' * remaining}{'🖤' * hits}\n"
         f"✅ Safe so far: <b>{safe}</b>"
     )
@@ -188,8 +188,8 @@ async def mines_command(update: Update, context: CallbackContext) -> None:
     coins = u_doc.get("coins", 0)
     if coins < entry_fee:
         await message.reply_text(
-            f"❌ You need <b>₲ {entry_fee} Grey Credits</b> to play.\n"
-            f"Current balance: <b>₲ {coins} Grey Credits</b>",
+            f"❌ You need <b>🟡 {entry_fee} Neko Coins</b> to play.\n"
+            f"Current balance: <b>🟡 {coins} Neko Coins</b>",
             parse_mode=ParseMode.HTML
         )
         return
@@ -246,7 +246,7 @@ async def cashout_command(update: Update, context: CallbackContext) -> None:
     sent = await message.reply_text(
         f"💰 <b>Cashed Out!</b>\n\n"
         f"✅ Safe tiles: <b>{game['safe']}</b>\n"
-        f"🎁 Reward: <b>₲ {reward} Grey Credits</b> ({_multiplier(game['safe'], game.get('multipliers'))}x)\n\n"
+        f"🎁 Reward: <b>🟡 {reward} Neko Coins</b> ({_multiplier(game['safe'], game.get('multipliers'))}x)\n\n"
         f"Smart move! 😎",
         parse_mode=ParseMode.HTML,
         reply_markup=kb
@@ -290,7 +290,7 @@ async def mines_callback(update: Update, context: CallbackContext) -> None:
         text = (
             f"💰 <b>Cashed Out!</b>\n\n"
             f"✅ Safe tiles: <b>{game['safe']}</b>\n"
-            f"🎁 Reward: <b>₲ {reward} Grey Credits</b> ({_multiplier(game['safe'], game.get('multipliers'))}x)\n\n"
+            f"🎁 Reward: <b>🟡 {reward} Neko Coins</b> ({_multiplier(game['safe'], game.get('multipliers'))}x)\n\n"
             f"Smart move! 😎"
         )
         try:
@@ -305,7 +305,7 @@ async def mines_callback(update: Update, context: CallbackContext) -> None:
         kb   = _build_keyboard(game, reveal_all=True)
         try:
             await q.edit_message_text(
-                f"🏳️ You quit the game.\n₲ {game.get('entry_fee', ENTRY_FEE)} Grey Credits lost...",
+                f"🏳️ You quit the game.\n🟡 {game.get('entry_fee', ENTRY_FEE)} Neko Coins lost...",
                 parse_mode=ParseMode.HTML,
                 reply_markup=kb
             )
