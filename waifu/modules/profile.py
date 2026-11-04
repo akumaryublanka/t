@@ -136,6 +136,9 @@ async def profile(update: Update, context: CallbackContext) -> None:
     wins       = u_doc.get("wins", 0)
     guesses    = u_doc.get("total_guesses", 0)
     xp         = u_doc.get("xp", 0)
+    tower_best_floor = u_doc.get("tower_best_floor", 0)
+    tower_floors = u_doc.get("tower_floors", 0)
+    scramble_wins = u_doc.get("scramble_wins", 0)
     fav_id     = (u_doc.get("favorites") or [None])[0]
 
     unique_chars = list({c["id"]: c for c in chars}.values())
@@ -206,6 +209,8 @@ async def profile(update: Update, context: CallbackContext) -> None:
         f"│ 💎 <b>Est. Value:</b>  {total_value:,} 🟡 Neko Coins\n"
         f"│ 🎯 <b>Guesses:</b>    {guesses}\n"
         f"│ ⚔️ <b>Duel Wins:</b>  {wins}\n"
+        f"│ 🏯 <b>Tower Best:</b> Floor {tower_best_floor} ({tower_floors} cleared)\n"
+        f"│ 🧩 <b>Scramble Wins:</b> {scramble_wins}\n"
         f"└─────────────────────"
         f"{rarest_line}\n\n"
         f"✨ <b>𝗥𝗮𝗿𝗶𝘁𝘆 𝗕𝗿𝗲𝗮𝗸𝗱𝗼𝘄𝗻:</b>\n"
