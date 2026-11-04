@@ -218,8 +218,8 @@ async def duel_pick_b(update: Update, context: CallbackContext) -> None:
         f"   Power: <b>{max(a_power, b_power)}</b>\n\n"
         f"💀 <b>{escape(loser_name)}</b> lost with <b>{escape(lose_char)}</b>.\n"
         f"   Power: <b>{min(a_power, b_power)}</b>\n\n"
-        f"🏅 Winner earns <b>{win_reward} 🟡 Neko Coin</b> + 100 XP\n"
-        f"🎖️ Loser earns <b>{lose_reward} 🟡 Neko Coin</b> + 25 XP",
+        f"🏅 Winner earns <b>{win_reward} 🟡 Neko Coins</b> + 100 XP\n"
+        f"🎖️ Loser earns <b>{lose_reward} 🟡 Neko Coins</b> + 25 XP",
         parse_mode=ParseMode.HTML,
     )
 
