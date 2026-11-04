@@ -132,7 +132,7 @@ Lower drop weights generally mean rarer drops. Owner-flagged special characters 
 | Correct character guess | **+50 XP** |
 | Start `/mines` | **−500 🟡 Neko Coins** |
 
-Exchange: `/exchange coins 1000` converts 1,000 Neko Coins into 1 Neko Gem. `/exgem 1` converts 1 Neko Gem back into 900 Neko Coins. The older `/exshard` command remains as an alias.
+Exchange: `/exchange coins 1000` converts 1,000 Neko Coins into 1 Neko Gem. `/exgem 1` converts 1 Neko Gem back into 900 Neko Coins.
 
 Collection values are estimated by rarity. Mines uses a 4×4 board with 3 mines and 2 lives; multipliers rise as safe tiles are found. Play responsibly with your in-game Neko Coins.
 
