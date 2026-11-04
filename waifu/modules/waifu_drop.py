@@ -619,7 +619,7 @@ async def guess(update: Update, context: CallbackContext) -> None:
         event_bonus = max(0, min(100000000, int((event or {}).get("reward", 0))))
     except (TypeError, ValueError):
         event_bonus = 0
-    event_bonus_text = f"\n🎉 Event reward: +{event_bonus:,} Grey Credits" if event_bonus else ""
+    event_bonus_text = f"\n🎉 Event reward: +{event_bonus:,} 🟡 Neko Coins" if event_bonus else ""
     # Seed new accounts in a separate upsert, avoiding MongoDB operator
     # conflicts between $inc and $setOnInsert on the coins field.
     await user_collection.update_one(
