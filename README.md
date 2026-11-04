@@ -263,6 +263,8 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 | `/quiz [easy\|medium\|hard]` | Start the image quiz |
 | `/qlb` | Quiz leaderboard |
 | `/nguess`, `/nguess_stop` | Start or stop name guessing |
+| `/tower`, `/tower_stop` | Climb the Infinite Tower with maths challenges |
+| `/scramble`, `/scramble_stop` | Guess scrambled character names in chat |
 | `/hclaim` | Claim a free character on cooldown |
 | `/couple` | Daily group couple |
 
