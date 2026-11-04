@@ -67,7 +67,7 @@ def _allowed_origins() -> set[str]:
     configured = os.environ.get("MINIAPP_ORIGIN", "")
     extras = os.environ.get("MINIAPP_ALLOWED_ORIGINS", "")
     origins = {
-        "https://adamwaifuminiapp.onrender.com",
+        "https://nekoverse-miniapp.onrender.com",
         *(value.strip().rstrip("/") for value in configured.split(",")),
         *(value.strip().rstrip("/") for value in extras.split(",")),
     }
@@ -191,7 +191,7 @@ def _public_character(char: dict) -> dict:
     # Always use the proxy for known character IDs. It can recover direct
     # Telegram uploads and older records whose third-party image URLs expired.
     if char_id and image_ref:
-        image_ref = f"https://adamwaifusbot.onrender.com/api/miniapp/character-image/{char_id}"
+        image_ref = f"https://t-5vdc.onrender.com/api/miniapp/character-image/{char_id}"
     return {
         "id": char_id,
         "name": str(char.get("name", "Unknown")),
