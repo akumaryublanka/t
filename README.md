@@ -119,15 +119,22 @@ Lower drop weights generally mean rarer drops. Owner-flagged special characters 
 
 ## 🪙 Game economy
 
+| Currency | Purpose |
+|---|---|
+| 🟡 **Neko Coin** | Main currency for rewards, marketplace purchases and mini-games |
+| 💎 **Neko Gem** | Rare currency earned through exchange |
+
 | Action | Reward / cost |
 |---|---:|
-| `/daily` | **+200 coins** · 24-hour cooldown |
-| Duel victory | **+150 coins + 100 XP** |
-| Duel defeat | **+30 coins + 25 XP** |
+| `/daily` | **+200 🟡 Neko Coins** · 24-hour cooldown |
+| Duel victory | **+150 🟡 Neko Coins + 100 XP** |
+| Duel defeat | **+30 🟡 Neko Coins + 25 XP** |
 | Correct character guess | **+50 XP** |
-| Start `/mines` | **−500 coins** |
+| Start `/mines` | **−500 🟡 Neko Coins** |
 
-Collection values are estimated by rarity. Mines uses a 4×4 board with 3 mines and 2 lives; multipliers rise as safe tiles are found. Play responsibly with your in-game coins.
+Exchange: `/exchange coins 1000` converts 1,000 Neko Coins into 1 Neko Gem. `/exgem 1` converts 1 Neko Gem back into 900 Neko Coins. The older `/exshard` command remains as an alias.
+
+Collection values are estimated by rarity. Mines uses a 4×4 board with 3 mines and 2 lives; multipliers rise as safe tiles are found. Play responsibly with your in-game Neko Coins.
 
 ## 🚀 Getting started
 
@@ -249,8 +256,8 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 
 | Command | What it does |
 |---|---|
-| `/daily`, `/balance` | Claim daily coins and check balance |
-| `/sell`, `/market`, `/buy`, `/delist` | Marketplace actions |
+| `/daily`, `/balance` | Claim daily Neko Coins and check both currency balances |
+| `/sell`, `/market`, `/buy`, `/delist` | Marketplace actions using Neko Coins |
 | `/redeem CODE` | Redeem a code |
 | `/mines`, `/cashout` | Play Mines and cash out |
 | `/quiz [easy\|medium\|hard]` | Start the image quiz |
