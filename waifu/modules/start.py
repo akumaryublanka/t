@@ -60,7 +60,7 @@ HELP_CATEGORIES = {
              "description": "Claim one free character every 24 hours.",
              "note": "This command only works in the configured claim group."},
             {"key": "profile", "label": "👤 /profile", "usage": "/profile",
-             "description": "View your player profile, level, XP, coins, collection size and rarity breakdown."},
+             "description": "View your player profile, level, XP, Neko Coins, Neko Gems, collection size and rarity breakdown."},
         ],
     },
     "economy": {
@@ -68,7 +68,7 @@ HELP_CATEGORIES = {
         "intro": "Earn 🟡 Neko Coins, collect 💎 Neko Gems, manage your balance and use the character marketplace.",
         "commands": [
             {"key": "daily", "label": "🟡 /daily", "usage": "/daily",
-             "description": "Collect your daily 🟡 Neko Coin reward. The reward follows the bot's daily cooldown."},
+             "description": "Collect your daily 🟡 Neko Coins reward. The reward follows the bot's daily cooldown."},
             {"key": "weekly", "label": "/weekly", "usage": "Not available",
              "description": "A weekly bonus command was included in the old help text, but this repository version does not currently register a /weekly command.",
              "note": "Not active yet — this button is informational only.", "available": False},
