@@ -107,8 +107,6 @@ async def tower(update: Update, context: CallbackContext) -> None:
     }
     session["question"], answer = _make_problem(session["floor"])
     session["choices"], session["correct_index"] = _make_choices(answer, session["floor"])
-    _sessions[user.id] = session
-
     await user_collection.update_one(
         {"id": user.id},
         {
@@ -124,6 +122,7 @@ async def tower(update: Update, context: CallbackContext) -> None:
         },
         upsert=True,
     )
+    _sessions[user.id] = session
     await message.reply_text(
         _floor_text(user.first_name, session),
         reply_markup=_keyboard(user.id, session),
@@ -213,7 +212,7 @@ async def tower_callback(update: Update, context: CallbackContext) -> None:
             "🏯 <b>TOWER RUN OVER</b>\n"
             f"Floors cleared: <b>{session['solved']}</b>\n"
             f"🟡 Neko Coins earned: <b>{session['earned']:,}</b>\n"
-            f"🏆 Best floor reached: <b>{max(1, completed_floor)}</b>\n\n"
+            f"🏁 Last floor attempted: <b>{completed_floor}</b>\n\n"
             "Your earned rewards are already in your balance. Try again after the cooldown!",
             parse_mode=ParseMode.HTML,
         )
