@@ -291,7 +291,7 @@ async def buy(update: Update, context: CallbackContext) -> None:
 
     char = listing["char"]
     await update.message.reply_text(
-        f"✅ You bought <b>{escape(char['name'])}</b> for <b>{listing['price']:,} 🟡 Neko Coin</b>!\\n"
+        f"✅ You bought <b>{escape(char['name'])}</b> for <b>{listing['price']:,} 🟡 Neko Coins</b>!\\n"
         f"Seller received <b>{seller_payout:,}</b> Neko Coins (market fee: {fee:,}).",
         parse_mode=ParseMode.HTML,
     )
@@ -332,7 +332,7 @@ async def delist(update: Update, context: CallbackContext) -> None:
 # ── /exchange ────────────────────────────────────────────────────────────────
 # Usage:
 #   /exchange coins 1000  -> 1 Neko Gem
-#   /exgem 1              -> 900 Neko Coin
+#   /exgem 1              -> 900 Neko Coins
 #   /exchange 1000          -> shorthand for coins -> gems
 
 async def exchange(update: Update, context: CallbackContext) -> None:
@@ -417,7 +417,7 @@ async def exchange(update: Update, context: CallbackContext) -> None:
         if not result.modified_count:
             current = await user_collection.find_one({"id": u.id}) or doc
             await update.message.reply_text(
-                f"❌ Not enough 💎 Neko Gem. You have <b>{current.get('grey_shards', 0):,}</b>.",
+                f"❌ Not enough 💎 Neko Gems. You have <b>{current.get('grey_shards', 0):,}</b>.",
                 parse_mode=ParseMode.HTML,
             )
             return
@@ -493,7 +493,7 @@ async def exgem(update: Update, context: CallbackContext) -> None:
     await message.reply_text(
         "<b>💱 NekoVerse Exchange Complete</b>\n\n"
         f"You exchanged <b>{amount:,} 💎 Neko Gem{'s' if amount != 1 else ''}</b> "
-        f"and received <b>{credits:,} 🟡 Neko Coin</b>.\n\n"
+        f"and received <b>{credits:,} 🟡 Neko Coins</b>.\n\n"
         "<b>New Balance:</b>\n"
         f"🟡 Neko Coins: <b>{current.get('coins', 0):,}</b>\n"
         f"💎 Neko Gems: <b>{current.get('grey_shards', 0):,}</b>",
