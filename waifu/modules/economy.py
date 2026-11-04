@@ -58,8 +58,8 @@ async def balance(update: Update, context: CallbackContext) -> None:
     doc = await _ensure_user(u.id, u)
     await update.message.reply_text(
         f"💰 <b>{escape(u.first_name)}'s Balance</b>\n\n"
-        f"🟡 Neko Coin: <b>{doc.get('coins', 0):,}</b>\n"
-        f"💎 Neko Gem: <b>{doc.get('grey_shards', 0):,}</b>",
+        f"🟡 Neko Coins: <b>{doc.get('coins', 0):,}</b>\n"
+        f"💎 Neko Gems: <b>{doc.get('grey_shards', 0):,}</b>",
         parse_mode=ParseMode.HTML,
     )
 
@@ -96,8 +96,8 @@ async def daily(update: Update, context: CallbackContext) -> None:
     )
     await update.message.reply_text(
         f"🎁 <b>Daily reward!</b>\n\n"
-        f"You received <b>{reward:,} 🟡 Neko Coin</b>\n"
-        f"Current Neko Coin: <b>{doc.get('coins', 0) + reward:,}</b>",
+        f"You received <b>{reward:,} 🟡 Neko Coins</b>\n"
+        f"Current Neko Coins: <b>{doc.get('coins', 0) + reward:,}</b>",
         parse_mode=ParseMode.HTML,
     )
 
@@ -147,7 +147,7 @@ async def sell(update: Update, context: CallbackContext) -> None:
     result = await market_collection.insert_one(listing)
 
     await update.message.reply_text(
-        f"🏪 <b>{escape(char['name'])}</b> listed for <b>{price:,} 🟡 Neko Coin</b>!\n"
+        f"🏪 <b>{escape(char['name'])}</b> listed for <b>{price:,} 🟡 Neko Coins</b>!\n"
         f"Listing ID: <code>{result.inserted_id}</code>",
         parse_mode=ParseMode.HTML,
     )
@@ -262,7 +262,7 @@ async def buy(update: Update, context: CallbackContext) -> None:
     buyer = await user_collection.find_one({"id": u.id})
     if not buyer or buyer.get("coins", 0) < listing["price"]:
         await update.message.reply_text(
-            f"❌ Not enough 🟡 Neko Coin. Need <b>{listing['price']:,}</b>.",
+            f"❌ Not enough 🟡 Neko Coins. Need <b>{listing['price']:,}</b>.",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -387,18 +387,18 @@ async def exchange(update: Update, context: CallbackContext) -> None:
         if not result.modified_count:
             current = await user_collection.find_one({"id": u.id}) or doc
             await update.message.reply_text(
-                f"❌ Not enough 🟡 Neko Coin. You have <b>{current.get('coins', 0):,}</b>.",
+                f"❌ Not enough 🟡 Neko Coins. You have <b>{current.get('coins', 0):,}</b>.",
                 parse_mode=ParseMode.HTML,
             )
             return
         current = await user_collection.find_one({"id": u.id})
         await update.message.reply_text(
             f"<b>𝐍𝐞𝐤𝐨𝐕𝐞𝐫𝐬𝐞:</b>\n\n"
-            f"You exchanged <b>{amount:,} 🟡 Neko Coin</b> and received "
+            f"You exchanged <b>{amount:,} 🟡 Neko Coins</b> and received "
             f"<b>{shards:,} 💎 Neko Gem{'s' if shards != 1 else ''}!</b>\n\n"
             f"<b>New Balance:</b>\n"
-            f"🟡 Neko Coin: <b>{current.get('coins', 0):,}</b>\n"
-            f"💎 Neko Gem: <b>{current.get('grey_shards', 0):,}</b>",
+            f"🟡 Neko Coins: <b>{current.get('coins', 0):,}</b>\n"
+            f"💎 Neko Gems: <b>{current.get('grey_shards', 0):,}</b>",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -425,10 +425,10 @@ async def exchange(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text(
             "<b>𝐍𝐄𝐊𝐎𝐕𝐄𝐑𝐒𝐄</b>\n\n"
             f"You exchanged <b>{amount:,} 💎 Neko Gem{'s' if amount != 1 else ''}</b> and received "
-            f"<b>{credits:,} 🟡 Neko Coin!</b>\n\n"
+            f"<b>{credits:,} 🟡 Neko Coins!</b>\n\n"
             f"<b>New Balance:</b>\n"
-            f"🟡 Neko Coin: <b>{current.get('coins', 0):,}</b>\n"
-            f"💎 Neko Gem: <b>{current.get('grey_shards', 0):,}</b>",
+            f"🟡 Neko Coins: <b>{current.get('coins', 0):,}</b>\n"
+            f"💎 Neko Gems: <b>{current.get('grey_shards', 0):,}</b>",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -495,8 +495,8 @@ async def exgem(update: Update, context: CallbackContext) -> None:
         f"You exchanged <b>{amount:,} 💎 Neko Gem{'s' if amount != 1 else ''}</b> "
         f"and received <b>{credits:,} 🟡 Neko Coin</b>.\n\n"
         "<b>New Balance:</b>\n"
-        f"🟡 Neko Coin: <b>{current.get('coins', 0):,}</b>\n"
-        f"💎 Neko Gem: <b>{current.get('grey_shards', 0):,}</b>",
+        f"🟡 Neko Coins: <b>{current.get('coins', 0):,}</b>\n"
+        f"💎 Neko Gems: <b>{current.get('grey_shards', 0):,}</b>",
         parse_mode=ParseMode.HTML,
     )
 
