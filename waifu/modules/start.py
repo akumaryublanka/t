@@ -10,7 +10,7 @@ from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler
 from waifu import application, BOT_USERNAME, GROUP_ID, PHOTO_URL, SUPPORT_CHAT, UPDATE_CHAT, OWNER_ID
 from waifu import pm_users as _pm
 
-MINIAPP_URL = os.environ.get("MINIAPP_URL", "https://adamwaifuminiapp.onrender.com")
+MINIAPP_URL = os.environ.get("MINIAPP_URL", "https://nekoverse-miniapp.onrender.com")
 LOGGER = logging.getLogger(__name__)
 
 
