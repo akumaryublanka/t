@@ -33,16 +33,16 @@ class Config:
     DROP_INTERVAL_MIN:    int   = int(os.environ.get("DROP_INTERVAL_MINUTES", "15"))
     DEFAULT_MSG_FREQUENCY: int  = int(os.environ.get("DEFAULT_MSG_FREQUENCY", "20"))
 
-    # Economy — Grey Waifu Bot
-    # ₲ Grey Credit are the regular currency.
-    # 💎 Grey Shard are the rare currency.
-    DAILY_GREY_CREDITS:     int = 200
-    DUEL_WIN_GREY_CREDITS:  int = 150
-    DUEL_LOSE_GREY_CREDITS: int = 30
+    # Economy — NekoVerse currencies
+    # 🟡 Neko Coin is the regular currency.
+    # 💎 Neko Gem is the rare currency.
+    DAILY_NEKO_COINS:     int = 200
+    DUEL_WIN_NEKO_COINS:  int = 150
+    DUEL_LOSE_NEKO_COINS: int = 30
 
     # Exchange rates
-    GREY_CREDITS_PER_SHARD: int = 1000
-    GREY_CREDITS_PER_REVERSE_SHARD: int = 900
+    NEKO_COINS_PER_GEM: int = 1000
+    NEKO_COINS_PER_REVERSE_GEM: int = 900
 
     # Active rarities (used by upload, harem, drop, claim, and rarity stats)
     RARITY_MAP: dict[int, str] = {
