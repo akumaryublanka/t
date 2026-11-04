@@ -423,7 +423,7 @@ async def exchange(update: Update, context: CallbackContext) -> None:
             return
         current = await user_collection.find_one({"id": u.id})
         await update.message.reply_text(
-            f"**𝐍𝐞𝐤𝐨𝐕𝐞𝐫𝐬𝐞:**\n\n"
+            "<b>𝐍𝐄𝐊𝐎𝐕𝐄𝐑𝐒𝐄</b>\n\n"
             f"You exchanged <b>{amount:,} 💎 Neko Gem{'s' if amount != 1 else ''}</b> and received "
             f"<b>{credits:,} 🟡 Neko Coin!</b>\n\n"
             f"<b>New Balance:</b>\n"
@@ -441,7 +441,7 @@ async def exchange(update: Update, context: CallbackContext) -> None:
 
 
 # ── /exgem ─────────────────────────────────────────────────────────────────
-# Convert Neko Gems back into Neko Coins: 1 shard = 900 credits.
+# Convert Neko Gems back into Neko Coins using the configured reverse exchange rate.
 
 async def exgem(update: Update, context: CallbackContext) -> None:
     u = update.effective_user
@@ -453,7 +453,7 @@ async def exgem(update: Update, context: CallbackContext) -> None:
     if len(args) != 1 or not args[0].isdigit() or int(args[0]) <= 0:
         await message.reply_text(
             "💎 <b>Neko Gem Exchange</b>\n\n"
-            "1 💎 Neko Gem → 900 🟡 Neko Coin\n\n"
+            f"1 💎 Neko Gem → {Config.NEKO_COINS_PER_REVERSE_GEM:,} 🟡 Neko Coins\n\n"
             "Usage: <code>/exgem 1</code>",
             parse_mode=ParseMode.HTML,
         )
@@ -504,7 +504,8 @@ async def exgem(update: Update, context: CallbackContext) -> None:
 application.add_handler(CommandHandler("balance", balance, block=False))
 application.add_handler(CommandHandler("daily",   daily,   block=False))
 application.add_handler(CommandHandler("exchange", exchange, block=False))
-application.add_handler(CommandHandler("exgem", exgem, block=False)\napplication.add_handler(CommandHandler("exshard", exgem, block=False))  # legacy alias)
+application.add_handler(CommandHandler("exgem", exgem, block=False))
+application.add_handler(CommandHandler("exshard", exgem, block=False))  # legacy alias)
 application.add_handler(CommandHandler("sell",    sell,    block=False))
 application.add_handler(CommandHandler("market",  market,  block=False))
 application.add_handler(CommandHandler("buy",     buy,     block=False))
