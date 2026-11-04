@@ -58,8 +58,8 @@ async def balance(update: Update, context: CallbackContext) -> None:
     doc = await _ensure_user(u.id, u)
     await update.message.reply_text(
         f"💰 <b>{escape(u.first_name)}'s Balance</b>\n\n"
-        f"₲ Grey Credit: <b>{doc.get('coins', 0):,}</b>\n"
-        f"💎 Grey Shard: <b>{doc.get('grey_shards', 0):,}</b>",
+        f"🟡 Neko Coin: <b>{doc.get('coins', 0):,}</b>\n"
+        f"💎 Neko Gem: <b>{doc.get('grey_shards', 0):,}</b>",
         parse_mode=ParseMode.HTML,
     )
 
@@ -87,17 +87,17 @@ async def daily(update: Update, context: CallbackContext) -> None:
         return
 
     try:
-        reward = max(0, min(100000000, int(settings.get("daily_reward", Config.DAILY_GREY_CREDITS))))
+        reward = max(0, min(100000000, int(settings.get("daily_reward", Config.DAILY_NEKO_COINS))))
     except (TypeError, ValueError):
-        reward = Config.DAILY_GREY_CREDITS
+        reward = Config.DAILY_NEKO_COINS
     await user_collection.update_one(
         {"id": u.id},
         {"$inc": {"coins": reward}, "$set": {"last_daily": now}},
     )
     await update.message.reply_text(
         f"🎁 <b>Daily reward!</b>\n\n"
-        f"You received <b>{reward:,} ₲ Grey Credit</b>\n"
-        f"Current Grey Credit: <b>{doc.get('coins', 0) + reward:,}</b>",
+        f"You received <b>{reward:,} 🟡 Neko Coin</b>\n"
+        f"Current Neko Coin: <b>{doc.get('coins', 0) + reward:,}</b>",
         parse_mode=ParseMode.HTML,
     )
 
@@ -147,7 +147,7 @@ async def sell(update: Update, context: CallbackContext) -> None:
     result = await market_collection.insert_one(listing)
 
     await update.message.reply_text(
-        f"🏪 <b>{escape(char['name'])}</b> listed for <b>{price:,} ₲ Grey Credit</b>!\n"
+        f"🏪 <b>{escape(char['name'])}</b> listed for <b>{price:,} 🟡 Neko Coin</b>!\n"
         f"Listing ID: <code>{result.inserted_id}</code>",
         parse_mode=ParseMode.HTML,
     )
@@ -179,7 +179,7 @@ async def market(update: Update, context: CallbackContext, page: int = 0) -> Non
         char  = lst["char"]
         lines.append(
             f"{char.get('rarity','🎴')}  <b>{escape(char['name'])}</b>  "
-            f"— <b>{lst['price']:,} ₲</b>\n"
+            f"— <b>{lst['price']:,} 🟡</b>\n"
             f"   Seller: {escape(lst['seller_name'])}  |  "
             f"<code>/buy {lst['_id']}</code>"
         )
@@ -215,7 +215,7 @@ async def market_page_cb(update: Update, context: CallbackContext) -> None:
         char = lst["char"]
         lines.append(
             f"{char.get('rarity','🎴')}  <b>{escape(char['name'])}</b>  "
-            f"— <b>{lst['price']:,} ₲</b>\n"
+            f"— <b>{lst['price']:,} 🟡</b>\n"
             f"   Seller: {escape(lst['seller_name'])}  |  "
             f"<code>/buy {lst['_id']}</code>"
         )
@@ -262,7 +262,7 @@ async def buy(update: Update, context: CallbackContext) -> None:
     buyer = await user_collection.find_one({"id": u.id})
     if not buyer or buyer.get("coins", 0) < listing["price"]:
         await update.message.reply_text(
-            f"❌ Not enough ₲ Grey Credit. Need <b>{listing['price']:,}</b>.",
+            f"❌ Not enough 🟡 Neko Coin. Need <b>{listing['price']:,}</b>.",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -291,8 +291,8 @@ async def buy(update: Update, context: CallbackContext) -> None:
 
     char = listing["char"]
     await update.message.reply_text(
-        f"✅ You bought <b>{escape(char['name'])}</b> for <b>{listing['price']:,} ₲ Grey Credit</b>!\\n"
-        f"Seller received <b>{seller_payout:,}</b> Grey Credits (market fee: {fee:,}).",
+        f"✅ You bought <b>{escape(char['name'])}</b> for <b>{listing['price']:,} 🟡 Neko Coin</b>!\\n"
+        f"Seller received <b>{seller_payout:,}</b> Neko Coins (market fee: {fee:,}).",
         parse_mode=ParseMode.HTML,
     )
 
@@ -331,9 +331,9 @@ async def delist(update: Update, context: CallbackContext) -> None:
 
 # ── /exchange ────────────────────────────────────────────────────────────────
 # Usage:
-#   /exchange credits 1000  -> 1 Grey Shard
-#   /exshard 1              -> 900 Grey Credit
-#   /exchange 1000          -> shorthand for credits -> shards
+#   /exchange coins 1000  -> 1 Neko Gem
+#   /exgem 1              -> 900 Neko Coin
+#   /exchange 1000          -> shorthand for coins -> gems
 
 async def exchange(update: Update, context: CallbackContext) -> None:
     u = update.effective_user
@@ -341,16 +341,16 @@ async def exchange(update: Update, context: CallbackContext) -> None:
     args = list(context.args or [])
 
     if len(args) == 1 and args[0].isdigit():
-        direction, amount_text = "credits", args[0]
+        direction, amount_text = "coins", args[0]
     elif len(args) == 2:
         direction, amount_text = args[0].lower(), args[1]
     else:
         await update.message.reply_text(
-            "💱 <b>Grey Exchange</b>\n\n"
-            "₲ 1,000 Grey Credit → 1 💎 Grey Shard\n"
-            "💎 1 Grey Shard → 900 ₲ Grey Credit\n\n"
-            "Use: <code>/exchange credits 1000</code>\n"
-            "Or: <code>/exshard 1</code>",
+            "💱 <b>NekoVerse Exchange</b>\n\n"
+            f"🟡 {Config.NEKO_COINS_PER_GEM:,} Neko Coins → 1 💎 Neko Gem\n"
+            f"💎 1 Neko Gem → {Config.NEKO_COINS_PER_REVERSE_GEM:,} 🟡 Neko Coins\n\n"
+            "Use: <code>/exchange coins 1000</code>\n"
+            "Or: <code>/exgem 1</code>",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -369,17 +369,17 @@ async def exchange(update: Update, context: CallbackContext) -> None:
     if direction in ("credit", "credits", "coin", "coins"):
         if amount > max_exchange:
             await update.message.reply_text(
-                f"❌ The configured exchange limit is {max_exchange:,} Grey Credits per exchange."
+                f"❌ The configured exchange limit is {max_exchange:,} Neko Coins per exchange."
             )
             return
-        if amount < 1000 or amount % 1000 != 0:
+        if amount < Config.NEKO_COINS_PER_GEM or amount % Config.NEKO_COINS_PER_GEM != 0:
             await update.message.reply_text(
-                "❌ Credits must be exchanged in multiples of 1,000.\n"
-                "Example: <code>/exchange credits 1000</code>",
+                f"❌ Neko Coins must be exchanged in multiples of {Config.NEKO_COINS_PER_GEM:,}.\n"
+                "Example: <code>/exchange coins 1000</code>",
                 parse_mode=ParseMode.HTML,
             )
             return
-        shards = amount // 1000
+        shards = amount // Config.NEKO_COINS_PER_GEM
         result = await user_collection.update_one(
             {"id": u.id, "coins": {"$gte": amount}},
             {"$inc": {"coins": -amount, "grey_shards": shards}},
@@ -387,27 +387,27 @@ async def exchange(update: Update, context: CallbackContext) -> None:
         if not result.modified_count:
             current = await user_collection.find_one({"id": u.id}) or doc
             await update.message.reply_text(
-                f"❌ Not enough ₲ Grey Credit. You have <b>{current.get('coins', 0):,}</b>.",
+                f"❌ Not enough 🟡 Neko Coin. You have <b>{current.get('coins', 0):,}</b>.",
                 parse_mode=ParseMode.HTML,
             )
             return
         current = await user_collection.find_one({"id": u.id})
         await update.message.reply_text(
-            f"<b>𝐆𝐫𝐞𝐲:</b>\n\n"
-            f"You exchanged <b>{amount:,} ₲ Grey Credit</b> and received "
-            f"<b>{shards:,} 💎 Grey Shard{'s' if shards != 1 else ''}!</b>\n\n"
+            f"<b>𝐍𝐞𝐤𝐨𝐕𝐞𝐫𝐬𝐞:</b>\n\n"
+            f"You exchanged <b>{amount:,} 🟡 Neko Coin</b> and received "
+            f"<b>{shards:,} 💎 Neko Gem{'s' if shards != 1 else ''}!</b>\n\n"
             f"<b>New Balance:</b>\n"
-            f"₲ Grey Credit: <b>{current.get('coins', 0):,}</b>\n"
-            f"💎 Grey Shard: <b>{current.get('grey_shards', 0):,}</b>",
+            f"🟡 Neko Coin: <b>{current.get('coins', 0):,}</b>\n"
+            f"💎 Neko Gem: <b>{current.get('grey_shards', 0):,}</b>",
             parse_mode=ParseMode.HTML,
         )
         return
 
-    if direction in ("shard", "shards"):
-        credits = amount * 900
+    if direction in ("shard", "shards", "gem", "gems"):
+        credits = amount * Config.NEKO_COINS_PER_REVERSE_GEM
         if credits > max_exchange:
             await update.message.reply_text(
-                f"❌ The configured exchange limit is {max_exchange:,} Grey Credits per exchange."
+                f"❌ The configured exchange limit is {max_exchange:,} Neko Coins per exchange."
             )
             return
         result = await user_collection.update_one(
@@ -417,33 +417,33 @@ async def exchange(update: Update, context: CallbackContext) -> None:
         if not result.modified_count:
             current = await user_collection.find_one({"id": u.id}) or doc
             await update.message.reply_text(
-                f"❌ Not enough 💎 Grey Shard. You have <b>{current.get('grey_shards', 0):,}</b>.",
+                f"❌ Not enough 💎 Neko Gem. You have <b>{current.get('grey_shards', 0):,}</b>.",
                 parse_mode=ParseMode.HTML,
             )
             return
         current = await user_collection.find_one({"id": u.id})
         await update.message.reply_text(
-            f"**𝐆𝐫𝐞𝐲:**\n\n"
-            f"You exchanged <b>{amount:,} 💎 Grey Shard{'s' if amount != 1 else ''}</b> and received "
-            f"<b>{credits:,} ₲ Grey Credit!</b>\n\n"
+            f"**𝐍𝐞𝐤𝐨𝐕𝐞𝐫𝐬𝐞:**\n\n"
+            f"You exchanged <b>{amount:,} 💎 Neko Gem{'s' if amount != 1 else ''}</b> and received "
+            f"<b>{credits:,} 🟡 Neko Coin!</b>\n\n"
             f"<b>New Balance:</b>\n"
-            f"₲ Grey Credit: <b>{current.get('coins', 0):,}</b>\n"
-            f"💎 Grey Shard: <b>{current.get('grey_shards', 0):,}</b>",
+            f"🟡 Neko Coin: <b>{current.get('coins', 0):,}</b>\n"
+            f"💎 Neko Gem: <b>{current.get('grey_shards', 0):,}</b>",
             parse_mode=ParseMode.HTML,
         )
         return
 
     await update.message.reply_text(
-        "❌ Choose <code>credits</code> or <code>shards</code>.\n"
-        "Example: <code>/exchange credits 1000</code> or <code>/exshard 1</code>",
+        "❌ Choose <code>coins</code> or <code>gems</code>.\n"
+        "Example: <code>/exchange coins 1000</code> or <code>/exgem 1</code>",
         parse_mode=ParseMode.HTML,
     )
 
 
-# ── /exshard ─────────────────────────────────────────────────────────────────
-# Convert Grey Shards back into Grey Credits: 1 shard = 900 credits.
+# ── /exgem ─────────────────────────────────────────────────────────────────
+# Convert Neko Gems back into Neko Coins: 1 shard = 900 credits.
 
-async def exshard(update: Update, context: CallbackContext) -> None:
+async def exgem(update: Update, context: CallbackContext) -> None:
     u = update.effective_user
     message = update.effective_message
     if not u or not message:
@@ -452,9 +452,9 @@ async def exshard(update: Update, context: CallbackContext) -> None:
     args = list(context.args or [])
     if len(args) != 1 or not args[0].isdigit() or int(args[0]) <= 0:
         await message.reply_text(
-            "💎 <b>Grey Shard Exchange</b>\n\n"
-            "1 💎 Grey Shard → 900 ₲ Grey Credit\n\n"
-            "Usage: <code>/exshard 1</code>",
+            "💎 <b>Neko Gem Exchange</b>\n\n"
+            "1 💎 Neko Gem → 900 🟡 Neko Coin\n\n"
+            "Usage: <code>/exgem 1</code>",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -469,10 +469,10 @@ async def exshard(update: Update, context: CallbackContext) -> None:
     except (TypeError, ValueError):
         max_exchange = 100000
 
-    credits = amount * 900
+    credits = amount * Config.NEKO_COINS_PER_REVERSE_GEM
     if credits > max_exchange:
         await message.reply_text(
-            f"❌ The configured exchange limit is {max_exchange:,} Grey Credits per exchange."
+            f"❌ The configured exchange limit is {max_exchange:,} Neko Coins per exchange."
         )
         return
 
@@ -483,7 +483,7 @@ async def exshard(update: Update, context: CallbackContext) -> None:
     if not result.modified_count:
         current = await user_collection.find_one({"id": u.id}) or doc
         await message.reply_text(
-            f"❌ Not enough 💎 Grey Shards. You have "
+            f"❌ Not enough 💎 Neko Gems. You have "
             f"<b>{current.get('grey_shards', 0):,}</b>.",
             parse_mode=ParseMode.HTML,
         )
@@ -491,12 +491,12 @@ async def exshard(update: Update, context: CallbackContext) -> None:
 
     current = await user_collection.find_one({"id": u.id}) or doc
     await message.reply_text(
-        "<b>💱 Grey Exchange Complete</b>\n\n"
-        f"You exchanged <b>{amount:,} 💎 Grey Shard{'s' if amount != 1 else ''}</b> "
-        f"and received <b>{credits:,} ₲ Grey Credit</b>.\n\n"
+        "<b>💱 NekoVerse Exchange Complete</b>\n\n"
+        f"You exchanged <b>{amount:,} 💎 Neko Gem{'s' if amount != 1 else ''}</b> "
+        f"and received <b>{credits:,} 🟡 Neko Coin</b>.\n\n"
         "<b>New Balance:</b>\n"
-        f"₲ Grey Credit: <b>{current.get('coins', 0):,}</b>\n"
-        f"💎 Grey Shard: <b>{current.get('grey_shards', 0):,}</b>",
+        f"🟡 Neko Coin: <b>{current.get('coins', 0):,}</b>\n"
+        f"💎 Neko Gem: <b>{current.get('grey_shards', 0):,}</b>",
         parse_mode=ParseMode.HTML,
     )
 
@@ -504,7 +504,7 @@ async def exshard(update: Update, context: CallbackContext) -> None:
 application.add_handler(CommandHandler("balance", balance, block=False))
 application.add_handler(CommandHandler("daily",   daily,   block=False))
 application.add_handler(CommandHandler("exchange", exchange, block=False))
-application.add_handler(CommandHandler("exshard", exshard, block=False))
+application.add_handler(CommandHandler("exgem", exgem, block=False)\napplication.add_handler(CommandHandler("exshard", exgem, block=False))  # legacy alias)
 application.add_handler(CommandHandler("sell",    sell,    block=False))
 application.add_handler(CommandHandler("market",  market,  block=False))
 application.add_handler(CommandHandler("buy",     buy,     block=False))
