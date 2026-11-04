@@ -505,7 +505,6 @@ application.add_handler(CommandHandler("balance", balance, block=False))
 application.add_handler(CommandHandler("daily",   daily,   block=False))
 application.add_handler(CommandHandler("exchange", exchange, block=False))
 application.add_handler(CommandHandler("exgem", exgem, block=False))
-application.add_handler(CommandHandler("exshard", exgem, block=False))  # legacy alias
 application.add_handler(CommandHandler("sell",    sell,    block=False))
 application.add_handler(CommandHandler("market",  market,  block=False))
 application.add_handler(CommandHandler("buy",     buy,     block=False))
