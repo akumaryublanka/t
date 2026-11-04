@@ -30,7 +30,7 @@ async def _send_character(chat_id: int, bot, game: dict) -> None:
             caption=(
                 f"🎯 <b>Round {idx + 1}/{total}</b>\n\n"
                 f"❓ <b>Who is this character?</b>\n\n"
-                f"₲ <b>{game['coins_reward']} Grey Credits + {game['xp_reward']} XP</b>\n\n"
+                f"🟡 <b>{game['coins_reward']} Neko Coins + {game['xp_reward']} XP</b>\n\n"
                 f"<i>Type the character name to guess!</i>"
             ),
             parse_mode=ParseMode.HTML,
@@ -98,7 +98,7 @@ async def nguess(update: Update, context: CallbackContext) -> None:
         f"┣ Type character name to guess\n"
         f"┣ Correct → next character\n"
         f"┗ Bot decides when to stop!\n\n"
-        f"₲ <b>{coins_reward} Grey Credits + {xp_reward} XP</b> per correct\n\n"
+        f"🟡 <b>{coins_reward} Neko Coins + {xp_reward} XP</b> per correct\n\n"
         f"<i>Get ready...</i> 🎯",
         parse_mode=ParseMode.HTML,
     )
@@ -157,7 +157,7 @@ async def nguess_message(update: Update, context: CallbackContext) -> None:
         f"🌸 <b>{escape(char['name'])}</b>\n"
         f"📺 {escape(char['anime'])}\n"
         f"💎 {char.get('rarity', 'Unknown')}\n\n"
-        f"₲ +{game['coins_reward']} Grey Credits  ✨ +{game['xp_reward']} XP",
+        f"🟡 +{game['coins_reward']} Neko Coins  ✨ +{game['xp_reward']} XP",
         parse_mode=ParseMode.HTML,
     )
     schedule_delete(context.bot, chat_id, correct_msg.message_id, NGUESS_DELAY)
@@ -176,7 +176,7 @@ async def nguess_message(update: Update, context: CallbackContext) -> None:
                 medal = medals[i] if i < 3 else f"{i+1}."
                 lines.append(
                     f"{medal} <a href='tg://user?id={uid2}'>{escape(data['name'])}</a> "
-                    f"— {data['correct']} correct  |  ₲ {data['coins']:,} Grey Credits"
+                    f"— {data['correct']} correct  |  🟡 {data['coins']:,} Neko Coins"
                 )
             scoreboard = "\n".join(lines)
         else:
