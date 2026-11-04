@@ -79,7 +79,7 @@ async def _build_page(user_id: int, page: int) -> tuple[str, InlineKeyboardMarku
     lines  = [
         f"<b>🌸 {escape(user.get('first_name', 'User'))}'s Harem</b>",
         f"📦 {total_unique} unique  |  🗂 {len(chars)} total  |  "
-        f"💰 {user.get('coins', 0):,} coins",
+        f"🟡 {user.get('coins', 0):,} Neko Coins",
         f"Page {page+1}/{total_pages}\n",
     ]
 
