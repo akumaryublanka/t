@@ -77,7 +77,7 @@ HELP_CATEGORIES = {
             {"key": "exchange", "label": "💱 /exchange", "usage": "/exchange coins 1000",
              "description": "Exchange 1,000 🟡 Neko Coins for 1 💎 Neko Gem. You can also exchange gems back with /exgem."},
             {"key": "exgem", "label": "💎 /exgem", "usage": "/exgem 1",
-             "description": "Exchange 1 💎 Neko Gem for 900 🟡 Neko Coins. The old /exshard command remains as an alias."},
+             "description": "Exchange 1 💎 Neko Gem for 900 🟡 Neko Coins."},
             {"key": "market", "label": "🛒 /market", "usage": "/market",
              "description": "Browse character listings available for purchase in the marketplace."},
             {"key": "sell", "label": "🏷️ /sell", "usage": "/sell character_id price",
