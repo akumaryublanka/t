@@ -111,7 +111,7 @@ async def _send_round(bot, chat_id: int, session: dict) -> None:
         f"Round <b>{round_num}/{total}</b>\n\n"
         f"{q['question']}\n\n"
         f"⏰ {bar} {timeout}s\n"
-        f"₲ <b>{cfg['coins']} Grey Credits + {cfg['xp']} XP</b>"
+        f"🟡 <b>{cfg['coins']} Neko Coins + {cfg['xp']} XP</b>"
     )
 
     try:
@@ -164,7 +164,7 @@ async def _round_timer(bot, chat_id: int, message_id: int, kb: InlineKeyboardMar
             f"Round <b>{round_num}/{session['total_rounds']}</b>\n\n"
             f"{q['question']}\n\n"
             f"⏰ {bar} {remaining}s\n"
-            f"₲ <b>{cfg['coins']} Grey Credits + {cfg['xp']} XP</b>"
+            f"🟡 <b>{cfg['coins']} Neko Coins + {cfg['xp']} XP</b>"
         )
         try:
             await bot.edit_message_caption(
@@ -240,7 +240,7 @@ async def _end_quiz(bot, chat_id: int, session: dict) -> None:
             medal = medals[i] if i < 3 else f"{i+1}."
             lines.append(
                 f"{medal} <a href='tg://user?id={uid}'>{escape(data['name'])}</a> "
-                f"— {data['correct']} correct | ₲ {data['coins']:,} Grey Credits"
+                f"— {data['correct']} correct | 🟡 {data['coins']:,} Neko Coins"
             )
         scoreboard = "\n".join(lines)
     else:
@@ -289,9 +289,9 @@ async def quiz(update: Update, context: CallbackContext) -> None:
         else:
             await update.message.reply_text(
                 "Usage: /quiz [easy|medium|hard]\n\n"
-                "🟢 Easy — 40s | ₲ 80 Grey Credits\n"
-                "🟡 Medium — 30s | ₲ 150 Grey Credits\n"
-                "🔴 Hard — 20s | ₲ 250 Grey Credits",
+                "🟢 Easy — 40s | 🟡 80 Neko Coins\n"
+                "🟡 Medium — 30s | 🟡 150 Neko Coins\n"
+                "🔴 Hard — 20s | 🟡 250 Neko Coins",
             )
             return
 
@@ -415,7 +415,7 @@ async def quiz_answer(update: Update, context: CallbackContext) -> None:
             f"🎉 <a href='tg://user?id={uid}'>{escape(user.first_name)}</a> got it!\n\n"
             f"🌸 <b>{escape(correct_obj['name'])}</b>\n"
             f"📺 {escape(correct_obj['anime'])}\n\n"
-            f"₲ +{cfg['coins']} Grey Credits  ✨ +{cfg['xp']} XP"
+            f"🟡 +{cfg['coins']} Neko Coins  ✨ +{cfg['xp']} XP"
             f"{streak_txt}"
         )
     else:
@@ -465,7 +465,7 @@ async def quiz_leaderboard(update: Update, context: CallbackContext) -> None:
         lines.append(
             f"{medal} <b>{escape(doc.get('name', 'Unknown'))}</b> — "
             f"✅ {doc.get('correct', 0)} correct | "
-            f"₲ {doc.get('coins_earned', 0):,} Grey Credits | "
+            f"🟡 {doc.get('coins_earned', 0):,} Neko Coins | "
             f"🔥 Best streak: {doc.get('best_streak', 0)}"
         )
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
