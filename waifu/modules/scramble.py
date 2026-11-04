@@ -27,36 +27,20 @@ def _normalise(value: str) -> str:
 
 
 def _scramble_name(name: str) -> str:
-    words = name.split()
-    scrambled_words = []
-    changed = False
+    original = [char for char in name if char.isalnum()]
+    if len(original) < 2:
+        return name.upper()
 
-    for word in words:
-        letters = list(word)
-        if len(letters) > 2:
-            original = "".join(letters)
-            for _ in range(20):
-                random.shuffle(letters)
-                candidate = "".join(letters)
-                if candidate.casefold() != original.casefold():
-                    changed = True
-                    break
-            scrambled_words.append(candidate if candidate.casefold() != original.casefold() else original)
-        else:
-            scrambled_words.append(word)
+    original_text = "".join(original).casefold()
+    for _ in range(50):
+        shuffled = original.copy()
+        random.shuffle(shuffled)
+        if "".join(shuffled).casefold() == original_text:
+            continue
+        iterator = iter(shuffled)
+        return "".join(next(iterator) if char.isalnum() else char for char in name).upper()
 
-    scrambled = " ".join(scrambled_words)
-    if changed and _normalise(scrambled) != _normalise(name):
-        return scrambled.upper()
-
-    letters = [char for char in name if char.isalnum()]
-    for _ in range(30):
-        random.shuffle(letters)
-        candidate = "".join(letters)
-        if candidate.casefold() != _normalise(name):
-            return candidate.upper()
-    return scrambled.upper()
-
+    return name.upper()
 
 async def _expire_round(chat_id: int, session: dict, bot) -> None:
     await asyncio.sleep(_ROUND_SECONDS)
