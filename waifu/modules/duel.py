@@ -57,13 +57,13 @@ async def _duel_rewards() -> tuple[int, int]:
     game_doc = await db["miniapp_settings"].find_one({"_id": "game"})
     values = (game_doc or {}).get("data") or {}
     try:
-        win = max(0, min(100000000, int(values.get("duel_win_reward", Config.DUEL_WIN_GREY_CREDITS))))
+        win = max(0, min(100000000, int(values.get("duel_win_reward", Config.DUEL_WIN_NEKO_COINS))))
     except (TypeError, ValueError):
-        win = Config.DUEL_WIN_GREY_CREDITS
+        win = Config.DUEL_WIN_NEKO_COINS
     try:
-        loss = max(0, min(100000000, int(values.get("duel_loss_reward", Config.DUEL_LOSE_GREY_CREDITS))))
+        loss = max(0, min(100000000, int(values.get("duel_loss_reward", Config.DUEL_LOSE_NEKO_COINS))))
     except (TypeError, ValueError):
-        loss = Config.DUEL_LOSE_GREY_CREDITS
+        loss = Config.DUEL_LOSE_NEKO_COINS
     return win, loss
 
 
@@ -218,8 +218,8 @@ async def duel_pick_b(update: Update, context: CallbackContext) -> None:
         f"   Power: <b>{max(a_power, b_power)}</b>\n\n"
         f"💀 <b>{escape(loser_name)}</b> lost with <b>{escape(lose_char)}</b>.\n"
         f"   Power: <b>{min(a_power, b_power)}</b>\n\n"
-        f"🏅 Winner earns <b>{win_reward} ₲ Grey Credit</b> + 100 XP\n"
-        f"🎖️ Loser earns <b>{lose_reward} ₲ Grey Credit</b> + 25 XP",
+        f"🏅 Winner earns <b>{win_reward} 🟡 Neko Coin</b> + 100 XP\n"
+        f"🎖️ Loser earns <b>{lose_reward} 🟡 Neko Coin</b> + 25 XP",
         parse_mode=ParseMode.HTML,
     )
 
