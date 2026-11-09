@@ -4,7 +4,7 @@ from io import BytesIO
 from pathlib import Path
 
 import aiohttp
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from waifu import LOGGER
 
@@ -17,8 +17,24 @@ _FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 @lru_cache(maxsize=1)
 def _load_watermark() -> Image.Image:
+    """Load the existing logo and remove its near-black matte background."""
     with Image.open(_WATERMARK_PATH) as source:
-        return source.convert("RGBA")
+        logo = source.convert("RGBA")
+
+    # The supplied logo artwork has a black canvas. Key out only near-neutral
+    # dark pixels, preserving the purple/pink parts of the original artwork.
+    cleaned = []
+    for red, green, blue, alpha in logo.getdata():
+        brightest = max(red, green, blue)
+        darkest = min(red, green, blue)
+        chroma = brightest - darkest
+        if brightest <= 28 and chroma <= 20:
+            alpha = 0
+        elif brightest <= 64 and chroma <= 24:
+            alpha = int(alpha * (brightest - 28) / 36)
+        cleaned.append((red, green, blue, max(0, min(255, alpha))))
+    logo.putdata(cleaned)
+    return logo
 
 
 def _font(path: str, size: int):
@@ -29,7 +45,7 @@ def _font(path: str, size: int):
 
 
 def watermark_image_bytes(data: bytes) -> bytes:
-    """Apply a clear MikasaVerse • Waifu Collection label and return JPEG bytes."""
+    """Apply a larger, transparent MikasaVerse logo and return JPEG bytes."""
     if not data:
         raise ValueError("Cannot watermark an empty image")
 
@@ -44,59 +60,65 @@ def watermark_image_bytes(data: bytes) -> bytes:
     if width < 2 or height < 2:
         raise ValueError("Invalid image dimensions")
 
-    # Reuse the existing MikasaVerse crown artwork, with the brand name and
-    # collection label enlarged so the ownership is readable on Telegram.
     logo = _load_watermark().copy()
-    panel_w = min(int(width * 0.58), max(220, int(width * 0.58)))
-    panel_h = max(66, int(height * 0.12))
-    panel_w = min(panel_w, max(1, width - 12))
-    panel_h = min(panel_h, max(1, height - 12))
-    margin = max(8, int(min(width, height) * 0.025))
-    x0 = max(0, width - panel_w - margin)
-    y0 = max(0, height - panel_h - margin)
-    x1 = min(width - 1, x0 + panel_w)
-    y1 = min(height - 1, y0 + panel_h)
-
-    overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    draw.rounded_rectangle(
-        (x0, y0, x1, y1),
-        radius=max(10, int(panel_h * 0.22)),
-        fill=(13, 8, 29, 232),
-        outline=(226, 151, 255, 255),
-        width=max(2, int(min(width, height) * 0.003)),
-    )
-
-    pad = max(10, int(panel_h * 0.16))
-    text_x = x0 + pad
-    main_size = max(18, int(panel_h * 0.36))
-    sub_size = max(11, int(panel_h * 0.19))
-    main_font = _font(_FONT_BOLD, main_size)
-    sub_font = _font(_FONT_BOLD, sub_size)
-    main_y = y0 + max(2, int(panel_h * 0.12))
-    sub_y = y0 + int(panel_h * 0.60)
-    draw.text(
-        (text_x, main_y), "MIKASAVERSE",
-        font=main_font, fill=(255, 255, 255, 255),
-        stroke_width=1, stroke_fill=(13, 8, 29, 255),
-    )
-    draw.text(
-        (text_x, sub_y), "WAIFU COLLECTION",
-        font=sub_font, fill=(232, 190, 255, 255),
-        stroke_width=1, stroke_fill=(13, 8, 29, 255),
-    )
-
-    # Keep the original crown image as a larger, clear brand accent on the right.
+    margin = max(6, int(min(width, height) * 0.025))
     if logo.width and logo.height:
-        accent_w = max(20, int(panel_h * 0.62))
-        accent_h = max(20, int(logo.height * accent_w / logo.width))
-        accent = logo.resize((accent_w, accent_h), Image.Resampling.LANCZOS)
-        accent.putalpha(accent.getchannel("A").point(lambda value: int(value * 0.96)))
-        ax = max(text_x, x1 - accent_w - pad // 2)
-        ay = y0 + max(0, (panel_h - accent_h) // 2)
-        overlay.alpha_composite(accent, (ax, ay))
+        aspect = logo.width / logo.height
+        # Make the logo substantially larger while keeping it inside short
+        # landscape images and leaving the artwork itself unobstructed.
+        logo_w = min(
+            int(width * 0.42),
+            int(height * 0.20 * aspect),
+            max(1, width - 2 * margin),
+        )
+        logo_w = max(1, logo_w)
+        logo_h = max(1, int(logo.height * logo_w / logo.width))
+        logo = logo.resize((logo_w, logo_h), Image.Resampling.LANCZOS)
 
-    canvas = Image.alpha_composite(canvas, overlay)
+        label_font_size = max(9, int(logo_h * 0.24))
+        label_font = _font(_FONT_BOLD, label_font_size)
+        label = "WAIFU COLLECTION"
+        draw_probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+        left, top, right, bottom = draw_probe.textbbox(
+            (0, 0), label, font=label_font, stroke_width=1
+        )
+        label_w = right - left
+        label_h = bottom - top
+        gap = max(1, int(logo_h * 0.05))
+        total_h = logo_h + gap + label_h
+
+        x = max(0, width - logo_w - margin)
+        y = max(0, height - total_h - margin)
+
+        overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+
+        # A soft dark shadow gives the transparent logo contrast without
+        # putting a black rectangle or badge behind it.
+        blur_radius = max(1, int(logo_h * 0.045))
+        shadow_alpha = logo.getchannel("A").filter(
+            ImageFilter.GaussianBlur(radius=blur_radius)
+        )
+        shadow = Image.new("RGBA", logo.size, (15, 5, 28, 0))
+        shadow.putalpha(shadow_alpha.point(lambda value: int(value * 0.82)))
+        overlay.alpha_composite(shadow, (min(width - 1, x + 1), min(height - 1, y + 2)))
+        overlay.alpha_composite(logo, (x, y))
+
+        # Keep the collection label readable, but let the original logo remain
+        # the main visual mark. No filled background is drawn behind either.
+        label_x = max(0, width - margin - label_w)
+        label_y = min(height - 1, y + logo_h + gap - top)
+        label_draw = ImageDraw.Draw(overlay)
+        label_draw.text(
+            (label_x, label_y),
+            label,
+            font=label_font,
+            fill=(247, 226, 255, 255),
+            stroke_width=1,
+            stroke_fill=(24, 8, 38, 235),
+        )
+
+        canvas = Image.alpha_composite(canvas, overlay)
+
     output = BytesIO()
     canvas.convert("RGB").save(output, format="JPEG", quality=93, optimize=True)
     return output.getvalue()
