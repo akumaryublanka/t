@@ -12,6 +12,7 @@ from telegram.ext import CallbackContext, CommandHandler
 
 from waifu import application, user_collection, PHOTO_URL, db
 from waifu.config import Config
+from waifu.image_watermark import watermarked_photo
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -229,17 +230,20 @@ async def profile(update: Update, context: CallbackContext) -> None:
     except Exception:
         pass
 
-    # Fallback: fav character image
-    if not photo:
-        if fav_id:
-            fav_char = next((c for c in chars if c["id"] == fav_id), None)
-            photo    = (fav_char or {}).get("img_url")
+    # Fallback: favourite character image (brand character art, not user avatars).
+    photo_is_character = False
+    if not photo and fav_id:
+        fav_char = next((c for c in chars if c["id"] == fav_id), None)
+        photo = (fav_char or {}).get("img_url")
+        photo_is_character = bool(photo)
 
     # Fallback: bot photo
     if not photo and PHOTO_URL:
         photo = random.choice(PHOTO_URL)
 
     if photo:
+        if photo_is_character:
+            photo = await watermarked_photo(context.bot, photo)
         await update.message.reply_photo(
             photo, caption=text, parse_mode=ParseMode.HTML)
     else:
