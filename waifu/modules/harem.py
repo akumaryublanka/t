@@ -17,7 +17,7 @@ from waifu.config import Config
 logger = logging.getLogger(__name__)
 
 _PAGE = 15
-_IMAGE_PROXY = "https://adamwaifusbot.onrender.com/api/miniapp/character-image/{}"
+_IMAGE_PROXY = "https://t-5vdc.onrender.com/api/miniapp/character-image/{}?wm=1"
 # Always use the same rarity names/icons as /upload and /uploadchar.
 # This prevents the Harem display from falling behind when rarities change.
 _MEDALS = {
