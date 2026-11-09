@@ -16,6 +16,7 @@ from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler
 
 from waifu import application, collection, user_collection, db
 from waifu.modules.auto_delete import schedule_delete, QUIZ_DELAY
+from waifu.image_watermark import watermarked_photo
 
 _ALLOWED_GROUP         = -1003852394368
 quiz_scores_collection = db["quiz_scores"]
@@ -115,9 +116,10 @@ async def _send_round(bot, chat_id: int, session: dict) -> None:
     )
 
     try:
+        marked_photo = await watermarked_photo(bot, q["correct"]["img_url"])
         msg = await bot.send_photo(
             chat_id=chat_id,
-            photo=q["correct"]["img_url"],
+            photo=marked_photo,
             caption=caption,
             parse_mode=ParseMode.HTML,
             reply_markup=kb,
