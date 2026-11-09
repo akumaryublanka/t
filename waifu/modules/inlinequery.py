@@ -136,8 +136,7 @@ async def inlinequery(update: Update, context: CallbackContext) -> None:
         name  = escape(c.get("name",  "Unknown"))
         anime = escape(c.get("anime", "Unknown"))
 
-        # Telegram-uploaded images should use their Telegram file_id directly.
-        # This avoids Telegram's inline-photo URL fetch rejecting our image proxy.
+        # Both public URLs and Telegram file_ids go through the branded image proxy.
         image_ref = str(c.get("img_url", "") or "").strip()
         char_id = str(c.get("id", "") or "").strip()
         if not image_ref or not char_id:
