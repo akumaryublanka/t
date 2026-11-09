@@ -11,6 +11,7 @@ from telegram.constants import ParseMode
 from waifu import application, user_collection, collection, db
 from waifu.modules.auto_delete import schedule_delete, HCLAIM_DELAY
 from waifu.config import Config
+from waifu.image_watermark import watermarked_photo
 
 ALLOWED_GROUP_ID   = -1003852394368
 ALLOWED_GROUP_LINK = "https://t.me/MeowGang_FriendsChatting_Group"
@@ -173,8 +174,9 @@ async def hclaim_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     img_url = char.get("img_url", "")
     try:
         if img_url:
+            marked_photo = await watermarked_photo(context.bot, img_url)
             sent = await message.reply_photo(
-                photo=img_url, caption=caption, parse_mode=ParseMode.HTML,
+                photo=marked_photo, caption=caption, parse_mode=ParseMode.HTML,
             )
         else:
             sent = await message.reply_text(caption, parse_mode=ParseMode.HTML)
