@@ -3,7 +3,7 @@ import time
 from html import escape
 from pymongo import ASCENDING
 from cachetools import TTLCache
-from telegram import InlineQueryResultCachedPhoto, InlineQueryResultPhoto, Update
+from telegram import InlineQueryResultPhoto, Update
 from telegram.ext import CallbackContext, InlineQueryHandler
 from waifu import application, collection, db, user_collection
 
@@ -31,11 +31,11 @@ async def _resolve_url(img: str, char_id: str, bot) -> str | None:
     img = str(img or "").strip()
     char_id = str(char_id or "").strip()
 
+    if char_id:
+        return f"https://t-5vdc.onrender.com/api/miniapp/character-image/{char_id}?wm=1"
+
     if img.startswith(("https://", "http://")):
         return img
-
-    if char_id:
-        return f"https://adamwaifusbot.onrender.com/api/miniapp/character-image/{char_id}"
 
     return None
 
@@ -139,10 +139,10 @@ async def inlinequery(update: Update, context: CallbackContext) -> None:
         # Telegram-uploaded images should use their Telegram file_id directly.
         # This avoids Telegram's inline-photo URL fetch rejecting our image proxy.
         image_ref = str(c.get("img_url", "") or "").strip()
-        is_public_url = image_ref.startswith(("https://", "http://"))
-        photo_url = image_ref if is_public_url else None
-        if not image_ref:
+        char_id = str(c.get("id", "") or "").strip()
+        if not image_ref or not char_id:
             continue
+        photo_url = f"https://t-5vdc.onrender.com/api/miniapp/character-image/{char_id}?wm=1"
 
         if user and raw.startswith("collection."):
             u_cnt = sum(1 for x in user.get("characters", []) if x["id"] == c["id"])
@@ -168,24 +168,14 @@ async def inlinequery(update: Update, context: CallbackContext) -> None:
             )
 
         result_id = f"{c['id']}_{time.time_ns()}"
-        if is_public_url:
-            # External HTTPS image URLs continue to work as before.
-            results.append(InlineQueryResultPhoto(
-                id=result_id,
-                photo_url=photo_url,
-                thumbnail_url=photo_url,
-                caption=cap,
-                parse_mode="HTML",
-            ))
-        else:
-            # Telegram file_ids are already uploaded to this bot, so return a
-            # cached-photo result instead of asking Telegram to fetch an HTTP URL.
-            results.append(InlineQueryResultCachedPhoto(
-                id=result_id,
-                photo_file_id=image_ref,
-                caption=cap,
-                parse_mode="HTML",
-            ))
+        # The proxy applies the same watermark to both public URLs and Telegram uploads.
+        results.append(InlineQueryResultPhoto(
+            id=result_id,
+            photo_url=photo_url,
+            thumbnail_url=photo_url,
+            caption=cap,
+            parse_mode="HTML",
+        ))
 
     await update.inline_query.answer(results, next_offset=next_offset, cache_time=5)
 
