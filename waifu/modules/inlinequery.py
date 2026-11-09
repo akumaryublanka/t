@@ -22,12 +22,7 @@ async def create_indexes() -> None:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 async def _resolve_url(img: str, char_id: str, bot) -> str | None:
-    """Return a public URL for an inline gallery image.
-
-    Prefer a stored public URL directly. Use the character-image endpoint only
-    when the stored image value is not already an HTTP(S) URL (for example, a
-    Telegram file_id that the endpoint can resolve).
-    """
+    """Return the branded proxy URL used by inline gallery results."""
     img = str(img or "").strip()
     char_id = str(char_id or "").strip()
 
