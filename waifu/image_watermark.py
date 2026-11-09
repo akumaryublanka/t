@@ -1,16 +1,18 @@
-"""Small, consistent MikasaVerse watermark for character artwork."""
+"""Readable MikasaVerse brand watermark for character artwork."""
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 
 import aiohttp
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from waifu import LOGGER
 
 
 _WATERMARK_PATH = Path(__file__).parent / "assets" / "mikasaverse_watermark.webp"
 _MAX_IMAGE_BYTES = 15 * 1024 * 1024
+_FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+_FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 
 @lru_cache(maxsize=1)
@@ -19,13 +21,19 @@ def _load_watermark() -> Image.Image:
         return source.convert("RGBA")
 
 
+def _font(path: str, size: int):
+    try:
+        return ImageFont.truetype(path, size=size)
+    except OSError:
+        return ImageFont.load_default()
+
+
 def watermark_image_bytes(data: bytes) -> bytes:
-    """Apply a subtle lower-right MikasaVerse logo and return a JPEG image."""
+    """Apply a prominent, readable MikasaVerse • Waifu label and return JPEG bytes."""
     if not data:
         raise ValueError("Cannot watermark an empty image")
 
     with Image.open(BytesIO(data)) as source:
-        # Character collections are still photo messages; use the first GIF frame.
         try:
             source.seek(0)
         except EOFError:
@@ -36,46 +44,53 @@ def watermark_image_bytes(data: bytes) -> bytes:
     if width < 2 or height < 2:
         raise ValueError("Invalid image dimensions")
 
-    mark = _load_watermark().copy()
-    margin = max(2, int(min(width, height) * 0.02))
-    available_width = max(1, width - 2 * margin)
-    available_height = max(1, height - 2 * margin)
-    target_width = min(mark.width, max(32, int(width * 0.22)), available_width)
-    target_height = max(1, int(mark.height * target_width / mark.width))
-    if target_height > available_height:
-        target_width = max(1, int(target_width * available_height / target_height))
-        target_height = max(1, int(mark.height * target_width / mark.width))
-    mark = mark.resize((target_width, target_height), Image.Resampling.LANCZOS)
+    # Keep the existing crown artwork as a small brand accent, but make the name
+    # itself the main watermark so viewers can immediately read who owns the drop.
+    logo = _load_watermark().copy()
+    panel_w = min(int(width * 0.43), max(190, int(width * 0.43)))
+    panel_h = max(48, int(height * 0.075))
+    panel_w = min(panel_w, max(1, width - 12))
+    panel_h = min(panel_h, max(1, height - 12))
+    margin = max(6, int(min(width, height) * 0.025))
+    x0 = max(0, width - panel_w - margin)
+    y0 = max(0, height - panel_h - margin)
+    x1 = min(width - 1, x0 + panel_w)
+    y1 = min(height - 1, y0 + panel_h)
 
-    # Lower opacity keeps the character artwork clearly visible.
-    alpha = mark.getchannel("A").point(lambda value: int(value * 0.68))
-    mark.putalpha(alpha)
-
-    x = max(margin, width - mark.width - margin)
-    y = max(margin, height - mark.height - margin)
-
-    # A faint dark glass backing keeps the wordmark legible on bright artwork.
-    pad_x = max(4, int(target_width * 0.025))
-    pad_y = max(3, int(target_height * 0.08))
-    panel = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(panel)
+    overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
     draw.rounded_rectangle(
-        (
-            max(0, x - pad_x),
-            max(0, y - pad_y),
-            min(width - 1, x + mark.width + pad_x),
-            min(height - 1, y + mark.height + pad_y),
-        ),
-        radius=max(5, int(target_height * 0.12)),
-        fill=(12, 7, 28, 54),
-        outline=(229, 139, 255, 42),
-        width=1,
+        (x0, y0, x1, y1),
+        radius=max(8, int(panel_h * 0.22)),
+        fill=(13, 8, 29, 218),
+        outline=(226, 151, 255, 235),
+        width=max(2, int(min(width, height) * 0.0025)),
     )
-    canvas = Image.alpha_composite(canvas, panel)
-    canvas.alpha_composite(mark, (x, y))
 
+    pad = max(8, int(panel_h * 0.16))
+    text_x = x0 + pad
+    main_size = max(14, int(panel_h * 0.34))
+    sub_size = max(9, int(panel_h * 0.17))
+    main_font = _font(_FONT_BOLD, main_size)
+    sub_font = _font(_FONT_REGULAR, sub_size)
+    main_y = y0 + max(2, int(panel_h * 0.12))
+    sub_y = y0 + int(panel_h * 0.59)
+    draw.text((text_x, main_y), "MIKASAVERSE", font=main_font, fill=(255, 255, 255, 255), stroke_width=0)
+    draw.text((text_x, sub_y), "WAIFU COLLECTION", font=sub_font, fill=(232, 190, 255, 255), stroke_width=0)
+
+    # Tiny crown accent at the far right, never competing with the readable name.
+    if logo.width and logo.height:
+        accent_w = max(12, int(panel_h * 0.48))
+        accent_h = max(12, int(logo.height * accent_w / logo.width))
+        accent = logo.resize((accent_w, accent_h), Image.Resampling.LANCZOS)
+        accent.putalpha(accent.getchannel("A").point(lambda value: int(value * 0.9)))
+        ax = max(text_x, x1 - accent_w - pad // 2)
+        ay = y0 + max(0, (panel_h - accent_h) // 2)
+        overlay.alpha_composite(accent, (ax, ay))
+
+    canvas = Image.alpha_composite(canvas, overlay)
     output = BytesIO()
-    canvas.convert("RGB").save(output, format="JPEG", quality=91, optimize=True)
+    canvas.convert("RGB").save(output, format="JPEG", quality=93, optimize=True)
     return output.getvalue()
 
 
