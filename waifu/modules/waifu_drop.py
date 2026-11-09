@@ -34,6 +34,7 @@ from waifu import (
     LOGGER, OWNER_ID, db,
 )
 from waifu.config import Config
+from waifu.image_watermark import watermarked_photo
 from waifu.modules.auto_delete import (
     schedule_delete, delete_now, WAIFU_DROP_DELAY, DROP_EXPIRY_DELAY,
     DROP_NOTICE_DELAY, WRONG_GUESS_DELAY, GUESS_COMMAND_DELAY,
@@ -417,9 +418,10 @@ async def _send_drop(chat_id: int, bot) -> None:
     _claimed.pop(chat_id, None)
 
     try:
+        marked_photo = await watermarked_photo(bot, char["img_url"])
         msg = await bot.send_photo(
             chat_id=chat_id,
-            photo=char["img_url"],
+            photo=marked_photo,
             caption=_drop_caption(char),
             parse_mode=ParseMode.HTML,
         )
