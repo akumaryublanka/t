@@ -22,6 +22,7 @@ from bson import ObjectId
 from telegram import InputFile
 
 from waifu import TOKEN, application, CHARA_CHANNEL_ID, collection, user_collection, market_collection, db
+from waifu.image_watermark import watermark_image_bytes
 
 MAX_INIT_DATA_AGE = 86_400
 MINES_COUNT = 3
@@ -191,7 +192,7 @@ def _public_character(char: dict) -> dict:
     # Always use the proxy for known character IDs. It can recover direct
     # Telegram uploads and older records whose third-party image URLs expired.
     if char_id and image_ref:
-        image_ref = f"https://t-5vdc.onrender.com/api/miniapp/character-image/{char_id}"
+        image_ref = f"https://t-5vdc.onrender.com/api/miniapp/character-image/{char_id}?wm=1"
     return {
         "id": char_id,
         "name": str(char.get("name", "Unknown")),
@@ -1041,7 +1042,7 @@ async def api_character_image(request: web.Request) -> web.StreamResponse:
         raise web.HTTPNotFound(text="Character image not found")
 
     image_ref = str(char.get("img_url", "") or "").strip()
-    cache_key = (char_id, image_ref)
+    cache_key = (char_id, f"{image_ref}|mikasaverse-watermark-v1")
     now = time.monotonic()
     async with _CHARACTER_IMAGE_CACHE_LOCK:
         cached = _CHARACTER_IMAGE_CACHE.get(cache_key)
@@ -1117,22 +1118,41 @@ async def api_character_image(request: web.Request) -> web.StreamResponse:
                             char_id,
                         )
 
-        # Last resort for legacy records without a usable channel source.
+        # Last resort for legacy records without a usable Telegram file_id:
+        # download the saved public URL so inline and Mini App images can also
+        # receive the same MikasaVerse watermark.
         if tg_file is None and public_url:
-            raise web.HTTPFound(location=public_url)
-        if tg_file is None:
-            raise web.HTTPBadGateway(text="Character image could not be recovered from Telegram")
+            timeout = aiohttp.ClientTimeout(total=20, connect=8)
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(public_url, allow_redirects=True) as response:
+                        response.raise_for_status()
+                        remote_type = str(response.headers.get("Content-Type", "")).split(";", 1)[0].lower()
+                        if remote_type and not remote_type.startswith("image/"):
+                            raise web.HTTPBadGateway(text="The character URL did not return an image")
+                        data = await response.content.read(15 * 1024 * 1024 + 1)
+            except web.HTTPException:
+                raise
+            except Exception as download_error:
+                raise web.HTTPBadGateway(text="Could not download the character image") from download_error
+        elif tg_file is None:
+            raise web.HTTPBadGateway(text="Character image could not be recovered")
+        else:
+            data = bytes(await tg_file.download_as_bytearray())
 
-        data = bytes(await tg_file.download_as_bytearray())
         if not data:
-            raise web.HTTPBadGateway(text="Telegram returned an empty image")
-        file_path = str(getattr(tg_file, "file_path", "") or "").lower()
-        content_type = "image/png" if file_path.endswith(".png") else (
-            "image/webp" if file_path.endswith(".webp") else (
-                "image/gif" if file_path.endswith(".gif") else "image/jpeg"
-            )
-        )
-        cache_key = (char_id, image_ref)
+            raise web.HTTPBadGateway(text="Character image source returned an empty image")
+        if len(data) > 15 * 1024 * 1024:
+            raise web.HTTPBadGateway(text="Character image exceeds the 15 MB processing limit")
+
+        try:
+            data = await asyncio.to_thread(watermark_image_bytes, data)
+        except Exception as watermark_error:
+            logger.exception("Could not apply MikasaVerse watermark to character %s", char_id)
+            raise web.HTTPBadGateway(text="Could not watermark the character image") from watermark_error
+
+        content_type = "image/jpeg"
+        cache_key = (char_id, f"{image_ref}|mikasaverse-watermark-v1")
         if len(data) <= _CHARACTER_IMAGE_CACHE_MAX_ITEM_BYTES:
             async with _CHARACTER_IMAGE_CACHE_LOCK:
                 previous = _CHARACTER_IMAGE_CACHE.pop(cache_key, None)
