@@ -9,7 +9,7 @@ from waifu import LOGGER
 
 
 ABOUT_TEXT = (
-    "🎴 Catch waifus & husbandos, collect rare characters, trade, duel and enjoy VC music!"
+    "🎴 Catch waifus & husbandos, collect rare characters, trade and compete!"
 )
 
 DESCRIPTION_TEXT = (
@@ -17,7 +17,7 @@ DESCRIPTION_TEXT = (
     "🎴 Catch anime characters as they drop in your group. Build your collection, "
     "hunt rare editions, earn Neko Coins & Gems, trade or gift characters, and "
     "challenge friends in PvP duels.\n\n"
-    "🎧 Enjoy music with friends in voice chats and play mini-games like Quiz, "
+    "🎮 Play mini-games like Quiz, "
     "Mines, Tower and Scramble.\n\n"
     "⚔️ Collect. Trade. Compete. Become a legend!"
 )
