@@ -29,7 +29,7 @@ def _font(path: str, size: int):
 
 
 def watermark_image_bytes(data: bytes) -> bytes:
-    """Apply a prominent, readable MikasaVerse • Waifu label and return JPEG bytes."""
+    """Apply a clear MikasaVerse • Waifu Collection label and return JPEG bytes."""
     if not data:
         raise ValueError("Cannot watermark an empty image")
 
@@ -44,14 +44,14 @@ def watermark_image_bytes(data: bytes) -> bytes:
     if width < 2 or height < 2:
         raise ValueError("Invalid image dimensions")
 
-    # Keep the existing crown artwork as a small brand accent, but make the name
-    # itself the main watermark so viewers can immediately read who owns the drop.
+    # Reuse the existing MikasaVerse crown artwork, with the brand name and
+    # collection label enlarged so the ownership is readable on Telegram.
     logo = _load_watermark().copy()
-    panel_w = min(int(width * 0.43), max(190, int(width * 0.43)))
-    panel_h = max(48, int(height * 0.075))
+    panel_w = min(int(width * 0.58), max(220, int(width * 0.58)))
+    panel_h = max(66, int(height * 0.12))
     panel_w = min(panel_w, max(1, width - 12))
     panel_h = min(panel_h, max(1, height - 12))
-    margin = max(6, int(min(width, height) * 0.025))
+    margin = max(8, int(min(width, height) * 0.025))
     x0 = max(0, width - panel_w - margin)
     y0 = max(0, height - panel_h - margin)
     x1 = min(width - 1, x0 + panel_w)
@@ -61,29 +61,37 @@ def watermark_image_bytes(data: bytes) -> bytes:
     draw = ImageDraw.Draw(overlay)
     draw.rounded_rectangle(
         (x0, y0, x1, y1),
-        radius=max(8, int(panel_h * 0.22)),
-        fill=(13, 8, 29, 218),
-        outline=(226, 151, 255, 235),
-        width=max(2, int(min(width, height) * 0.0025)),
+        radius=max(10, int(panel_h * 0.22)),
+        fill=(13, 8, 29, 232),
+        outline=(226, 151, 255, 255),
+        width=max(2, int(min(width, height) * 0.003)),
     )
 
-    pad = max(8, int(panel_h * 0.16))
+    pad = max(10, int(panel_h * 0.16))
     text_x = x0 + pad
-    main_size = max(14, int(panel_h * 0.34))
-    sub_size = max(9, int(panel_h * 0.17))
+    main_size = max(18, int(panel_h * 0.36))
+    sub_size = max(11, int(panel_h * 0.19))
     main_font = _font(_FONT_BOLD, main_size)
-    sub_font = _font(_FONT_REGULAR, sub_size)
+    sub_font = _font(_FONT_BOLD, sub_size)
     main_y = y0 + max(2, int(panel_h * 0.12))
-    sub_y = y0 + int(panel_h * 0.59)
-    draw.text((text_x, main_y), "MIKASAVERSE", font=main_font, fill=(255, 255, 255, 255), stroke_width=0)
-    draw.text((text_x, sub_y), "WAIFU COLLECTION", font=sub_font, fill=(232, 190, 255, 255), stroke_width=0)
+    sub_y = y0 + int(panel_h * 0.60)
+    draw.text(
+        (text_x, main_y), "MIKASAVERSE",
+        font=main_font, fill=(255, 255, 255, 255),
+        stroke_width=1, stroke_fill=(13, 8, 29, 255),
+    )
+    draw.text(
+        (text_x, sub_y), "WAIFU COLLECTION",
+        font=sub_font, fill=(232, 190, 255, 255),
+        stroke_width=1, stroke_fill=(13, 8, 29, 255),
+    )
 
-    # Tiny crown accent at the far right, never competing with the readable name.
+    # Keep the original crown image as a larger, clear brand accent on the right.
     if logo.width and logo.height:
-        accent_w = max(12, int(panel_h * 0.48))
-        accent_h = max(12, int(logo.height * accent_w / logo.width))
+        accent_w = max(20, int(panel_h * 0.62))
+        accent_h = max(20, int(logo.height * accent_w / logo.width))
         accent = logo.resize((accent_w, accent_h), Image.Resampling.LANCZOS)
-        accent.putalpha(accent.getchannel("A").point(lambda value: int(value * 0.9)))
+        accent.putalpha(accent.getchannel("A").point(lambda value: int(value * 0.96)))
         ax = max(text_x, x1 - accent_w - pad // 2)
         ay = y0 + max(0, (panel_h - accent_h) // 2)
         overlay.alpha_composite(accent, (ax, ay))
