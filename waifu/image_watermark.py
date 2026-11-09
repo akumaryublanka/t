@@ -37,18 +37,22 @@ def watermark_image_bytes(data: bytes) -> bytes:
         raise ValueError("Invalid image dimensions")
 
     mark = _load_watermark().copy()
-    target_width = max(64, min(240, int(width * 0.22)))
-    target_width = min(target_width, max(48, width - 16))
+    margin = max(2, int(min(width, height) * 0.02))
+    available_width = max(1, width - 2 * margin)
+    available_height = max(1, height - 2 * margin)
+    target_width = min(mark.width, max(32, int(width * 0.22)), available_width)
     target_height = max(1, int(mark.height * target_width / mark.width))
+    if target_height > available_height:
+        target_width = max(1, int(target_width * available_height / target_height))
+        target_height = max(1, int(mark.height * target_width / mark.width))
     mark = mark.resize((target_width, target_height), Image.Resampling.LANCZOS)
 
     # Lower opacity keeps the character artwork clearly visible.
     alpha = mark.getchannel("A").point(lambda value: int(value * 0.68))
     mark.putalpha(alpha)
 
-    margin = max(8, int(min(width, height) * 0.025))
-    x = max(0, width - mark.width - margin)
-    y = max(0, height - mark.height - margin)
+    x = max(margin, width - mark.width - margin)
+    y = max(margin, height - mark.height - margin)
 
     # A faint dark glass backing keeps the wordmark legible on bright artwork.
     pad_x = max(4, int(target_width * 0.025))
