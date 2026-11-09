@@ -381,3 +381,17 @@ See the repository's `LICENSE` file for the applicable license terms.
   <p><sub>Catch your favorites. Build your collection. Own the leaderboard.</sub></p>
 
 </div>
+
+
+## 🤖 Telegram profile setup
+
+The bot now syncs its public profile automatically during startup:
+
+- **About:** short profile text, set with Telegram's `setMyShortDescription`.
+- **Description:** welcome text, set with Telegram's `setMyDescription`.
+- **Commands:** player-facing command menu, set with Telegram's `setMyCommands`.
+
+To add the **Description Picture**, upload the generated MikasaVerse banner once through `@BotFather`:
+`/mybots` → select your bot → **Edit Bot** → **Edit Description Picture** → send the banner image.
+
+Telegram's standard Bot API does not currently provide a method to set the Description Picture, so this one-time BotFather step is required. The About, Description and Commands are reapplied automatically every time the bot starts.
