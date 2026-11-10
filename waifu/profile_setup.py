@@ -91,6 +91,15 @@ BOT_COMMANDS = [
     BotCommand("tower_stop", "🛑 Stop your Tower run"),
     BotCommand("scramble", "🔤 Unscramble an anime character name"),
     BotCommand("scramble_stop", "⏹️ Stop the scramble round"),
+
+    # 🎵 Voice chat music
+    BotCommand("play", "🎵 Play or queue a song in voice chat"),
+    BotCommand("pause", "⏸️ Pause voice chat music"),
+    BotCommand("resume", "▶️ Resume voice chat music"),
+    BotCommand("skip", "⏭️ Skip the current track"),
+    BotCommand("end", "⏹️ Stop music and clear the queue"),
+    BotCommand("queue", "📃 View the music queue"),
+    BotCommand("volume", "🔊 Change music volume"),
 ]
 
 
