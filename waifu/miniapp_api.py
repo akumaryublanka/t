@@ -1927,37 +1927,22 @@ async def api_admin_adjust_coins(request: web.Request) -> web.Response:
 # Persisted Owner Panel configuration. Only these whitelisted keys can be changed
 # from the Mini App; no secrets or arbitrary MongoDB fields are exposed.
 _DEFAULT_RARITIES = [
-    {"emoji":"⚪","name":"Common","weight":100000,"enabled":True,"kind":"main"},
-    {"emoji":"🟢","name":"Medium","weight":50000,"enabled":True,"kind":"main"},
-    {"emoji":"🟣","name":"Rare","weight":25000,"enabled":True,"kind":"main"},
-    {"emoji":"🔵","name":"Epic","weight":10000,"enabled":True,"kind":"main"},
+    {"emoji":"🌫️","name":"Ordinary","weight":100000,"enabled":True,"kind":"main"},
+    {"emoji":"🍀","name":"Superior","weight":50000,"enabled":True,"kind":"main"},
+    {"emoji":"🔮","name":"Prime","weight":25000,"enabled":True,"kind":"main"},
+    {"emoji":"🟣","name":"Epic","weight":10000,"enabled":True,"kind":"main"},
     {"emoji":"🟡","name":"Legendary","weight":4000,"enabled":True,"kind":"main"},
-    {"emoji":"🌟","name":"Luminous","weight":1500,"enabled":True,"kind":"main"},
-    {"emoji":"🎐","name":"Celestial","weight":500,"enabled":True,"kind":"main"},
-    {"emoji":"💮","name":"Special Edition","weight":200,"enabled":True,"kind":"main"},
-    {"emoji":"🔮","name":"Limited Edition","weight":100,"enabled":True,"kind":"main"},
-    {"emoji":"🔞","name":"Extreme","weight":50,"enabled":True,"kind":"main"},
-    {"emoji":"💎","name":"Mythic","weight":40,"enabled":True,"kind":"main"},
-    {"emoji":"👑","name":"Royal","weight":35,"enabled":True,"kind":"main"},
-    {"emoji":"🌌","name":"Cosmic","weight":30,"enabled":True,"kind":"main"},
-    {"emoji":"🔱","name":"Divine","weight":25,"enabled":True,"kind":"main"},
-    {"emoji":"💠","name":"Eternal","weight":20,"enabled":True,"kind":"main"},
-    {"emoji":"☄️","name":"Astral","weight":15,"enabled":True,"kind":"main"},
-    {"emoji":"🪽","name":"Transcendent","weight":12,"enabled":True,"kind":"main"},
-    {"emoji":"🪷","name":"Sacred","weight":10,"enabled":True,"kind":"main"},
-    {"emoji":"🐉","name":"Draconic","weight":8,"enabled":True,"kind":"main"},
-    {"emoji":"💫","name":"Infinity","weight":6,"enabled":True,"kind":"main"},
-    {"emoji":"🕊️","name":"Immortal","weight":5,"enabled":True,"kind":"main"},
-    {"emoji":"🌠","name":"Omniversal","weight":4,"enabled":True,"kind":"main"},
-    {"emoji":"💖","name":"Empress","weight":3,"enabled":True,"kind":"main"},
-    {"emoji":"🪄","name":"Miraculous","weight":2,"enabled":True,"kind":"main"},
-    {"emoji":"🏆","name":"Ultimate","weight":1,"enabled":True,"kind":"main"},
-    {"emoji":"❄️","name":"Winter","weight":50,"enabled":True,"kind":"event"},
-    {"emoji":"☀️","name":"Summer","weight":50,"enabled":True,"kind":"event"},
-    {"emoji":"🏅","name":"Elite","weight":50,"enabled":True,"kind":"event"},
-    {"emoji":"🎭","name":"Cosplay","weight":50,"enabled":True,"kind":"event"},
-    {"emoji":"🎃","name":"Halloween","weight":50,"enabled":True,"kind":"event"},
-    {"emoji":"💝","name":"Valentine's","weight":50,"enabled":True,"kind":"event"},
+    {"emoji":"🌟","name":"Mythic","weight":180,"enabled":True,"kind":"main"},
+    {"emoji":"💠","name":"Celestial","weight":220,"enabled":True,"kind":"main"},
+    {"emoji":"💮","name":"Special Edition","weight":280,"enabled":True,"kind":"main"},
+    {"emoji":"🪽","name":"Limited Edition","weight":100,"enabled":True,"kind":"main"},
+    {"emoji":"🔞","name":"Extreme","weight":10,"enabled":True,"kind":"main"},
+    {"emoji":"❄️","name":"Winter","weight":1000,"enabled":True,"kind":"event"},
+    {"emoji":"☀️","name":"Summer","weight":800,"enabled":True,"kind":"event"},
+    {"emoji":"👑","name":"Elite","weight":700,"enabled":True,"kind":"event"},
+    {"emoji":"🎭","name":"Cosplay","weight":600,"enabled":True,"kind":"event"},
+    {"emoji":"🎃","name":"Halloween","weight":500,"enabled":True,"kind":"event"},
+    {"emoji":"💝","name":"Valentine's","weight":400,"enabled":True,"kind":"event"},
 ]
 _DEFAULT_ADMIN_SETTINGS = {
     "general": {
@@ -2021,12 +2006,34 @@ def _merged_settings_value(category: str, stored: dict | None) -> dict | list:
         if not isinstance(value, list):
             return default
         if category == "rarities":
-            value = copy.deepcopy(value)
-            for item in value:
-                if isinstance(item, dict) and str(item.get("name", "")).strip().casefold() == "christmas":
-                    item["name"] = "Elite"
-                    item["emoji"] = "🏅"
-        return value
+            stored_by_name = {
+                str(item.get("name", "")).strip().casefold(): item
+                for item in value
+                if isinstance(item, dict) and str(item.get("name", "")).strip()
+            }
+            if "christmas" in stored_by_name and "elite" not in stored_by_name:
+                stored_by_name["elite"] = stored_by_name["christmas"]
+
+            expected_names = {item["name"].casefold() for item in _DEFAULT_RARITIES}
+            legacy_schema = not expected_names.issubset(stored_by_name)
+
+            normalized = []
+            for default_item in _DEFAULT_RARITIES:
+                previous = stored_by_name.get(default_item["name"].casefold(), {})
+                item = dict(default_item)
+                # When upgrading an old rarity schema, reset outdated weights
+                # to the new MikasaVerse balance while preserving direct-name
+                # enable/disable choices. Once migrated, Owner Panel weights
+                # remain fully customizable.
+                if not legacy_schema:
+                    try:
+                        item["weight"] = max(0, min(100000, int(previous.get("weight", item["weight"]))))
+                    except (TypeError, ValueError):
+                        pass
+                item["enabled"] = previous.get("enabled", item["enabled"]) is not False
+                normalized.append(item)
+            return normalized
+        return copy.deepcopy(value)
     if not isinstance(value, dict):
         return default
     result = dict(default)
