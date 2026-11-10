@@ -15,8 +15,9 @@ def _rarity_num(value) -> int:
     text = str(value or "").strip()
     if text.isdigit():
         return int(text) if int(text) in Config.RARITY_MAP else 1
+    canonical = Config.RARITY_LEGACY_MAP.get(text, text)
     for number, label in Config.RARITY_MAP.items():
-        if label == text:
+        if label == canonical:
             return number
     return 1
 
