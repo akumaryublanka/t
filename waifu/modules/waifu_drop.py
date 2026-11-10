@@ -609,7 +609,7 @@ async def guess(update: Update, context: CallbackContext) -> None:
         starting_coins = 0
 
     active_events = await _active_event_details()
-    char_rarity_keys = _rarity_keys(_rarity_label(_rarity_label(char.get("rarity", Config.RARITY_MAP[1]))))
+    char_rarity_keys = _rarity_keys(_rarity_label(char.get("rarity", Config.RARITY_MAP[1])))
     event = next((active_events[key] for key in char_rarity_keys if key in active_events), None)
     try:
         event_bonus = max(0, min(100000000, int((event or {}).get("reward", 0))))
