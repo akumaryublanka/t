@@ -430,6 +430,12 @@ async def _send_drop(chat_id: int, bot) -> None:
                     chat_id, char["name"], char.get("rarity", "?"),
                     " [SPECIAL]" if char.get("is_special") else "")
         _last_drop_sent[chat_id] = time.time()
+        # Best-effort private alerts for players who wishlisted this character.
+        try:
+            from waifu.modules.wishlist import notify_wishlist_match
+            asyncio.create_task(notify_wishlist_match(bot, char))
+        except Exception as notify_error:
+            LOGGER.debug("Wishlist notification could not be queued: %s", notify_error)
         try:
             expiry_delay = max(1, min(86400, int(game_settings.get("drop_expiry_seconds", DROP_EXPIRY_DELAY))))
         except (TypeError, ValueError):
