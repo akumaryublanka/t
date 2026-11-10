@@ -17,6 +17,16 @@ from telegram.constants import ParseMode
 from telegram.ext import CallbackContext, CommandHandler
 
 from waifu import application, collection, user_collection, db, OWNER_ID
+from waifu.config import Config
+
+def _rarity_label(value) -> str:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return Config.RARITY_MAP.get(value, Config.RARITY_MAP[1])
+    raw = str(value or Config.RARITY_MAP[1]).strip()
+    if raw.isdigit():
+        return Config.RARITY_MAP.get(int(raw), Config.RARITY_MAP[1])
+    return Config.RARITY_LEGACY_MAP.get(raw, raw)
+
 
 redeem_collection = db["redeem_codes"]
 
@@ -104,7 +114,7 @@ async def gencode(update: Update, context: CallbackContext) -> None:
             "type":       "char",
             "char_id":    char_id,
             "char_name":  char["name"],
-            "char_rarity": char.get("rarity", "Unknown"),
+            "char_rarity": _rarity_label(char.get("rarity")),
             "uses_left":  uses,
             "total_uses": uses,
             "used_by":    [],
@@ -114,7 +124,7 @@ async def gencode(update: Update, context: CallbackContext) -> None:
             f"✅ <b>Character Code Generated!</b>\n\n"
             f"🎟 Code: <code>{code}</code>\n"
             f"🌸 Character: <b>{escape(char['name'])}</b>\n"
-            f"💎 Rarity: {char.get('rarity', 'Unknown')}\n"
+            f"💎 Rarity: {_rarity_label(char.get('rarity'))}\n"
             f"🔁 Uses: <b>{uses}</b>\n\n"
             f"Share this code with users!",
             parse_mode=ParseMode.HTML,
@@ -207,6 +217,7 @@ async def redeem(update: Update, context: CallbackContext) -> None:
             await update.message.reply_text("❌ Character no longer exists in DB.")
             return
 
+        char = {**char, "rarity": _rarity_label(char.get("rarity"))}
         await user_collection.update_one(
             {"id": user_id},
             {
