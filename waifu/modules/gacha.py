@@ -33,8 +33,22 @@ def _weighted_character(chars: list[dict], minimum_rarity: int = 1) -> dict:
     pool = [c for c in chars if _rarity_number(c.get("rarity")) >= minimum_rarity]
     if not pool:
         pool = chars
-    weights = [_RARITY_WEIGHTS.get(_rarity_number(c.get("rarity")), 1) for c in pool]
-    return random.choices(pool, weights=weights, k=1)[0]
+
+    # Choose a rarity tier first, so a large catalogue cannot make a tier
+    # more common merely because it contains more characters.
+    by_rarity: dict[int, list[dict]] = {}
+    for char in pool:
+        number = _rarity_number(char.get("rarity"))
+        by_rarity.setdefault(number, []).append(char)
+    available = [number for number in by_rarity if _RARITY_WEIGHTS.get(number, 0) > 0]
+    if not available:
+        return random.choice(pool)
+    selected = random.choices(
+        available,
+        weights=[_RARITY_WEIGHTS[number] for number in available],
+        k=1,
+    )[0]
+    return random.choice(by_rarity[selected])
 
 
 async def _summon_settings() -> tuple[int, int, bool]:
