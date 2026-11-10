@@ -13,6 +13,15 @@ from waifu import application, collection, user_collection, db
 from waifu.modules.auto_delete import schedule_delete, NGUESS_DELAY
 from waifu.config import Config
 
+def _rarity_label(value) -> str:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return Config.RARITY_MAP.get(value, Config.RARITY_MAP[1])
+    raw = str(value or Config.RARITY_MAP[1]).strip()
+    if raw.isdigit():
+        return Config.RARITY_MAP.get(int(raw), Config.RARITY_MAP[1])
+    return Config.RARITY_LEGACY_MAP.get(raw, raw)
+
+
 _COINS_REWARD  = 50
 _XP_REWARD     = 25
 _ALLOWED_GROUP = -1003852394368
@@ -157,7 +166,7 @@ async def nguess_message(update: Update, context: CallbackContext) -> None:
         f"<a href='tg://user?id={uid}'>{escape(user.first_name)}</a> got it!\n\n"
         f"🌸 <b>{escape(char['name'])}</b>\n"
         f"📺 {escape(char['anime'])}\n"
-        f"💎 {Config.RARITY_LEGACY_MAP.get(str(char.get('rarity', '')), char.get('rarity', Config.RARITY_MAP[1]))}\n\n"
+        f"💎 {_rarity_label(char.get('rarity'))}\n\n"
         f"🟡 +{game['coins_reward']} Neko Coins  ✨ +{game['xp_reward']} XP",
         parse_mode=ParseMode.HTML,
     )
