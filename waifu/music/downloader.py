@@ -1,6 +1,69 @@
-"""YouTube-first search with a SoundCloud fallback for blocked YouTube results."""
+"""YouTube/SoundCloud extraction with optional private YouTube cookies."""
+
+import base64
+import logging
+import os
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 
 from yt_dlp import YoutubeDL
+
+LOGGER = logging.getLogger("waifu.music")
+
+
+def _cookie_file(temp_dir: str) -> str | None:
+    """Resolve cookies from a mounted secret file or a private env-backed temp file."""
+    configured_path = os.getenv("YTDLP_COOKIES_FILE")
+    if configured_path:
+        path = Path(configured_path).expanduser()
+        if not path.is_file():
+            raise FileNotFoundError(
+                "YTDLP_COOKIES_FILE is set, but the configured cookies file does not exist."
+            )
+        return str(path)
+
+    # Also support a Render secret file mounted as ./cookies.txt.
+    local_cookie_file = Path("cookies.txt")
+    if local_cookie_file.is_file():
+        return str(local_cookie_file.resolve())
+
+    encoded = os.getenv("YOUTUBE_COOKIES_B64", "").strip()
+    raw = os.getenv("YOUTUBE_COOKIES", "")
+    if encoded:
+        try:
+            content = base64.b64decode(encoded, validate=True).decode("utf-8")
+        except Exception as exc:
+            raise ValueError("YOUTUBE_COOKIES_B64 must be valid base64-encoded Netscape cookies.") from exc
+    else:
+        content = raw
+
+    if not content.strip():
+        return None
+    if "Netscape HTTP Cookie File" not in content and "#HttpOnly_" not in content:
+        raise ValueError(
+            "YouTube cookies must be exported in Netscape cookies.txt format."
+        )
+
+    cookie_path = Path(temp_dir) / "cookies.txt"
+    cookie_path.write_text(content, encoding="utf-8")
+    try:
+        cookie_path.chmod(0o600)
+    except OSError:
+        LOGGER.warning("Could not restrict permissions on temporary YouTube cookie file.")
+    return str(cookie_path)
+
+
+@contextmanager
+def _youtube_dl(options: dict):
+    """Create a yt-dlp instance with cookies applied to both search and stream refresh."""
+    with tempfile.TemporaryDirectory(prefix="mikasa-yt-dlp-") as temp_dir:
+        cookie_file = _cookie_file(temp_dir)
+        configured = dict(options)
+        if cookie_file:
+            configured["cookiefile"] = cookie_file
+        with YoutubeDL(configured) as ydl:
+            yield ydl
 
 
 def _extract(search: str) -> dict | None:
@@ -14,7 +77,7 @@ def _extract(search: str) -> dict | None:
         "socket_timeout": 20,
         "retries": 2,
     }
-    with YoutubeDL(options) as ydl:
+    with _youtube_dl(options) as ydl:
         info = ydl.extract_info(search, download=False)
         if info and info.get("entries"):
             info = next((entry for entry in info["entries"] if entry), None)
@@ -37,7 +100,7 @@ def extract_info_sync(query: str) -> dict:
         if result:
             return result
         raise ValueError(
-            "This link could not be played. YouTube may require authentication "
+            "This link could not be played. YouTube may require valid authentication "
             "cookies on the hosting server; try a song title or a SoundCloud link."
         )
 
@@ -59,6 +122,7 @@ def extract_info_sync(query: str) -> dict:
 
 
 def stream_url_sync(source: str) -> str:
+    """Refresh the direct stream URL using the same cookie configuration as search."""
     options = {
         "format": "bestaudio/best",
         "noplaylist": True,
@@ -68,7 +132,7 @@ def stream_url_sync(source: str) -> str:
         "socket_timeout": 20,
         "retries": 2,
     }
-    with YoutubeDL(options) as ydl:
+    with _youtube_dl(options) as ydl:
         info = ydl.extract_info(source, download=False)
         if info and info.get("entries"):
             info = next((entry for entry in info["entries"] if entry), None)
