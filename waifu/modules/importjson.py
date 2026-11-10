@@ -4,6 +4,8 @@ import json
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
+from waifu.config import Config
+
 from waifu import (
     application,
     collection,
@@ -72,7 +74,11 @@ async def import_json(update: Update, context: ContextTypes.DEFAULT_TYPE):
             image = char.get("image")
             name = char.get("name")
             anime = char.get("anime")
-            rarity = char.get("rarity")
+            raw_rarity = char.get("rarity") or Config.RARITY_MAP[1]
+            rarity_text = str(raw_rarity).strip()
+            rarity = Config.RARITY_LEGACY_MAP.get(rarity_text, rarity_text)
+            if rarity_text.isdigit():
+                rarity = Config.RARITY_MAP.get(int(rarity_text), Config.RARITY_MAP[1])
 
             if not image or not name:
                 failed += 1
