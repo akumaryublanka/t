@@ -44,24 +44,105 @@ class Config:
     NEKO_COINS_PER_GEM: int = 1000
     NEKO_COINS_PER_REVERSE_GEM: int = 900
 
-    # Active rarities (used by upload, harem, drop, claim, and rarity stats)
+    # Canonical MikasaVerse rarities. IDs 1–16 stay stable for existing characters.
     RARITY_MAP: dict[int, str] = {
-        1: "⚪ Common",
-        2: "🟢 Medium",
-        3: "🟣 Rare",
-        4: "🔵 Epic",
+        1: "🌫️ Ordinary",
+        2: "🍀 Superior",
+        3: "🔮 Prime",
+        4: "🟣 Epic",
         5: "🟡 Legendary",
-        6: "🌟 Luminous",
-        7: "🎐 Celestial",
+        6: "🌟 Mythic",
+        7: "💠 Celestial",
         8: "💮 Special Edition",
-        9: "🔮 Limited Edition",
+        9: "🪽 Limited Edition",
         10: "🔞 Extreme",
         11: "❄️ Winter",
         12: "☀️ Summer",
-        13: "🏅 Elite",
+        13: "👑 Elite",
         14: "🎭 Cosplay",
         15: "🎃 Halloween",
         16: "💝 Valentine's",
+    }
+
+    # Collection prestige values shown in /profile and /rarity.
+    RARITY_VALUE_MAP: dict[int, int] = {
+        1: 100,
+        2: 250,
+        3: 500,
+        4: 1_000,
+        5: 2_500,
+        6: 55_000,
+        7: 45_000,
+        8: 35_000,
+        9: 75_000,
+        10: 100_000,
+        11: 10_000,
+        12: 12_000,
+        13: 15_000,
+        14: 18_000,
+        15: 20_000,
+        16: 25_000,
+    }
+
+    # Per-character spawn weights: lower weight means a rarer drop.
+    # Extreme is intentionally the hardest rarity to obtain.
+    RARITY_WEIGHT_MAP: dict[int, int] = {
+        1: 1_000,
+        2: 500,
+        3: 250,
+        4: 100,
+        5: 40,
+        6: 180,
+        7: 220,
+        8: 280,
+        9: 100,
+        10: 10,
+        11: 1_000,
+        12: 800,
+        13: 700,
+        14: 600,
+        15: 500,
+        16: 400,
+    }
+
+    # Old database labels are normalized to their new display labels.
+    # This keeps existing characters, claims, and collections compatible.
+    RARITY_LEGACY_MAP: dict[str, str] = {
+        "⚪ Common": RARITY_MAP[1],
+        "⚪️ Common": RARITY_MAP[1],
+        "Common": RARITY_MAP[1],
+        "🟢 Medium": RARITY_MAP[2],
+        "Medium": RARITY_MAP[2],
+        "🟣 Rare": RARITY_MAP[3],
+        "Rare": RARITY_MAP[3],
+        "🔵 Epic": RARITY_MAP[4],
+        "Epic": RARITY_MAP[4],
+        "🟡 Legendary": RARITY_MAP[5],
+        "Legendary": RARITY_MAP[5],
+        "🌟 Luminous": RARITY_MAP[6],
+        "Luminous": RARITY_MAP[6],
+        "🎐 Celestial": RARITY_MAP[7],
+        "Celestial": RARITY_MAP[7],
+        "💮 Special Edition": RARITY_MAP[8],
+        "Special Edition": RARITY_MAP[8],
+        "🔮 Limited Edition": RARITY_MAP[9],
+        "Limited Edition": RARITY_MAP[9],
+        "🔞 Extreme": RARITY_MAP[10],
+        "Extreme": RARITY_MAP[10],
+        "❄️ Winter": RARITY_MAP[11],
+        "Winter": RARITY_MAP[11],
+        "☀️ Summer": RARITY_MAP[12],
+        "Summer": RARITY_MAP[12],
+        "🏅 Elite": RARITY_MAP[13],
+        "Elite": RARITY_MAP[13],
+        "🎭 Cosplay": RARITY_MAP[14],
+        "Cosplay": RARITY_MAP[14],
+        "🎃 Halloween": RARITY_MAP[15],
+        "Halloween": RARITY_MAP[15],
+        "💝 Valentine's": RARITY_MAP[16],
+        "Valentine's": RARITY_MAP[16],
+        "🎄 Christmas": RARITY_MAP[13],
+        "Christmas": RARITY_MAP[13],
     }
 
     @classmethod
