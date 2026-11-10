@@ -20,7 +20,7 @@ from waifu.image_watermark import watermarked_photo
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 RARITY_MAP = Config.RARITY_MAP
-RARITY_ORDER = list(RARITY_MAP)
+RARITY_ORDER = sorted(RARITY_MAP, key=lambda number: Config.RARITY_VALUE_MAP[number])
 
 VALUE_MAP = Config.RARITY_VALUE_MAP
 
