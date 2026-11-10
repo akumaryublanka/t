@@ -61,50 +61,30 @@ _XP_PER_GUESS     = 50
 # Special characters collection
 special_collection = db["special_characters"]
 
-# Rarity weights: low-value characters appear often; top-value tiers are extremely rare.
-# These weights are shared with /hclaim. They are per character, so a tier with
-# many entries can still appear more often than a tier with very few entries.
-_RARITY_WEIGHT_BY_ID = {
-    1: 1000,
-    2: 500,
-    3: 250,
-    4: 100,
-    5: 40,
-    6: 15,
-    7: 5,
-    8: 2,
-    9: 1,
-    10: 0.5,
-    11: 0.5,
-    12: 0.5,
-    13: 0.5,
-    14: 0.5,
-    15: 0.5,
-    16: 0.5,
-}
+# One canonical weight table is shared by normal drops, HClaim, and gacha.
+# Weights are per character; lower weight means a rarer individual drop.
 RARITY_WEIGHTS = {
     Config.RARITY_MAP[number]: weight
-    for number, weight in _RARITY_WEIGHT_BY_ID.items()
+    for number, weight in Config.RARITY_WEIGHT_MAP.items()
     if number in Config.RARITY_MAP
 }
 
 RARITY_NUMERIC_MAP = Config.RARITY_MAP
-_LEGACY_RARITY_LABELS = {"🎄 Christmas": Config.RARITY_MAP[13], "Christmas": Config.RARITY_MAP[13]}
 _LEGACY_RARITY_NUMBERS = {26: 11, 27: 12, 28: 13, 29: 14, 30: 15, 31: 16}
 
 def _rarity_label(value) -> str:
     if isinstance(value, int) and not isinstance(value, bool):
         number = value if value in RARITY_NUMERIC_MAP else _LEGACY_RARITY_NUMBERS.get(value)
-        return RARITY_NUMERIC_MAP.get(number, "⚪ Common")
+        return RARITY_NUMERIC_MAP.get(number, Config.RARITY_MAP[1])
     if isinstance(value, str):
         value = value.strip()
         if value.isdigit():
             number = int(value)
             number = number if number in RARITY_NUMERIC_MAP else _LEGACY_RARITY_NUMBERS.get(number)
-            return RARITY_NUMERIC_MAP.get(number, "⚪ Common")
-        value = _LEGACY_RARITY_LABELS.get(value, value)
-        return value if value in RARITY_WEIGHTS else "⚪ Common"
-    return "⚪ Common"
+            return RARITY_NUMERIC_MAP.get(number, Config.RARITY_MAP[1])
+        value = Config.RARITY_LEGACY_MAP.get(value, value)
+        return value if value in RARITY_WEIGHTS else Config.RARITY_MAP[1]
+    return Config.RARITY_MAP[1]
 
 # Special character extra rare weight
 _SPECIAL_WEIGHT = 1  # 0.5% effective chance
@@ -114,7 +94,7 @@ RARITY_DISPLAY = {rarity: rarity for rarity in Config.RARITY_MAP.values()}
 
 
 def _drop_caption(char: dict) -> str:
-    rarity = _rarity_label(char.get("rarity", "⚪ Common"))
+    rarity = _rarity_label(char.get("rarity", Config.RARITY_MAP[1]))
     rarity_label = RARITY_DISPLAY.get(rarity, rarity)
     is_special = char.get("is_special", False)
     special_tag = "🌟 <b>SPECIAL DROP!</b>\n" if is_special else ""
@@ -262,7 +242,18 @@ async def _pick_character(all_chars: list, sent: list) -> dict:
             if isinstance(tier, dict) and tier.get("kind") == "event":
                 event_rarity_keys.update(_rarity_keys(f'{tier.get("emoji", "")} {tier.get("name", "")}'))
                 event_rarity_keys.update(_rarity_keys(tier.get("name", "")))
-    if isinstance(rarity_rows, list):
+    canonical_names = {
+        label.split(" ", 1)[1].casefold()
+        for label in Config.RARITY_MAP.values()
+    }
+    stored_names = {
+        str(tier.get("name", "")).strip().casefold()
+        for tier in rarity_rows
+        if isinstance(tier, dict)
+    } if isinstance(rarity_rows, list) else set()
+    # Ignore pre-MikasaVerse Owner Panel presets instead of letting their
+    # obsolete rarity weights override the new canonical drop rates.
+    if isinstance(rarity_rows, list) and canonical_names.issubset(stored_names):
         for tier in rarity_rows:
             if not isinstance(tier, dict):
                 continue
@@ -279,14 +270,14 @@ async def _pick_character(all_chars: list, sent: list) -> dict:
 
     weighted_pool = []
     for char in unsent:
-        raw_rarity = char.get("rarity", "⚪ Common")
+        raw_rarity = char.get("rarity", Config.RARITY_MAP[1])
         rarity = _rarity_label(raw_rarity)
         lookup_keys = set()
         lookup_keys.update(_rarity_keys(str(raw_rarity)))
         lookup_keys.update(_rarity_keys(rarity))
         lookup_keys.update(_rarity_keys(rarity.removeprefix("⚪ ")))
         custom = next((custom_weights[key] for key in lookup_keys if key in custom_weights), None)
-        weight = custom if custom is not None else RARITY_WEIGHTS.get(rarity, RARITY_WEIGHTS.get("⚪ Common", 1))
+        weight = custom if custom is not None else RARITY_WEIGHTS.get(rarity, RARITY_WEIGHTS.get(Config.RARITY_MAP[1], 1))
 
         # Event rarities only drop within an enabled event's date window.
         if lookup_keys.intersection(event_rarity_keys):
