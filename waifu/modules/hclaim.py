@@ -110,6 +110,7 @@ async def hclaim_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not char:
         await message.reply_text("⚠️ No characters available right now. Try again later!")
         return
+    char = {**char, "rarity": _rarity_label(char.get("rarity", 1))}
 
     # ── Add to harem — same format as waifu_drop ─────────────────────────
     rarity_txt = _rarity_label(char.get("rarity", 1))
