@@ -86,8 +86,9 @@ def _rarity_label(value) -> str:
         return value if value in RARITY_WEIGHTS else Config.RARITY_MAP[1]
     return Config.RARITY_MAP[1]
 
-# Special character extra rare weight
-_SPECIAL_WEIGHT = 1  # 0.5% effective chance
+# Special characters are further reduced by 99.9% without overriding
+# their rarity tier. This keeps Extreme rarer than every other tier.
+_SPECIAL_WEIGHT_MULTIPLIER = 0.001
 
 # Rarity display map
 RARITY_DISPLAY = {rarity: rarity for rarity in Config.RARITY_MAP.values()}
@@ -288,9 +289,9 @@ async def _pick_character(all_chars: list, sent: list) -> dict:
         # Zero-weight tiers stay disabled, including specially flagged characters.
         if char.get("id") in special_ids:
             if weight > 0:
-                # Owner Panel weights are scaled by 100 relative to the legacy
-                # constants, so scale special weight too to preserve its odds.
-                weight = _SPECIAL_WEIGHT * 100 if custom is not None else _SPECIAL_WEIGHT
+                # Keep special characters rare while preserving the underlying
+                # rarity order (especially the ultra-rare Extreme tier).
+                weight *= _SPECIAL_WEIGHT_MULTIPLIER
                 char = {**char, "is_special": True}
         if weight > 0:
             weighted_pool.append((char, weight))
