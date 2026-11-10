@@ -9,7 +9,7 @@ from html import escape
 from pyrogram import Client as PyrogramClient
 from pytgcalls import PyTgCalls
 from pytgcalls import filters as call_filters
-from pytgcalls.types import GroupCallConfig, StreamEnded
+from pytgcalls.types import AudioQuality, GroupCallConfig, MediaStream, StreamEnded
 
 from waifu import application
 from waifu.music.config import get_music_credentials
@@ -165,8 +165,21 @@ async def _start_track(chat_id: int, track: dict) -> None:
     downloaded = await asyncio.to_thread(download_track_sync, track["source"])
     new_temp_dir = downloaded["temp_dir"]
     try:
-        # PyTgCalls 2.3.x accepts a local path and probes it with FFmpeg.
-        await _calls.play(chat_id, downloaded["path"], GroupCallConfig(auto_start=False))
+        # A bare file path is read as quickly as FFmpeg can produce frames.
+        # -re makes FFmpeg pace local-file input in real time. Explicitly use
+        # 48 kHz stereo PCM parameters for Telegram voice-chat audio.
+        audio_stream = MediaStream(
+            downloaded["path"],
+            AudioQuality.HIGH,
+            audio_flags=MediaStream.Flags.REQUIRED,
+            video_flags=MediaStream.Flags.IGNORE,
+            ffmpeg_parameters="-re",
+        )
+        await _calls.play(
+            chat_id,
+            audio_stream,
+            GroupCallConfig(auto_start=False),
+        )
     except Exception:
         await _cleanup_temp_dir(new_temp_dir)
         raise
