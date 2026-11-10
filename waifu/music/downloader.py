@@ -131,3 +131,77 @@ def extract_playlist_sync(query: str, max_tracks: int = 20) -> list[dict]:
         if len(tracks) >= max_tracks:
             break
     return tracks
+
+
+
+def download_audio_sync(query: str, max_bytes: int = 45 * 1024 * 1024) -> dict:
+    """Download one audio result to a temporary MP3 for Telegram upload.
+
+    YouTube is tried first for text searches, followed by SoundCloud. This
+    deliberately uses the same anonymous clients as playback and never needs
+    session cookies. The caller must remove the returned temp_dir.
+    """
+    import glob
+    import os
+    import shutil
+    import tempfile
+
+    if not query or len(query) > 500:
+        raise ValueError("Provide a song title or a valid media link.")
+
+    is_url = query.startswith(("http://", "https://"))
+    searches = [query] if is_url else [f"ytsearch1:{query}", f"scsearch1:{query}"]
+    errors = []
+
+    for search in searches:
+        temp_dir = tempfile.mkdtemp(prefix="mikasa-song-")
+        options = {
+            **_youtube_options(),
+            "skip_download": False,
+            "noplaylist": True,
+            "playlist_items": "1",
+            "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
+            "max_filesize": max_bytes,
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }
+            ],
+        }
+        try:
+            with YoutubeDL(options) as ydl:
+                info = ydl.extract_info(search, download=True)
+            if info and info.get("entries"):
+                info = next((entry for entry in info["entries"] if entry), None)
+            files = [
+                path for path in glob.glob(os.path.join(temp_dir, "*"))
+                if os.path.isfile(path)
+            ]
+            if not files:
+                raise RuntimeError("The downloader did not produce an audio file.")
+            audio_path = next(
+                (path for path in files if path.lower().endswith(".mp3")),
+                max(files, key=os.path.getsize),
+            )
+            size = os.path.getsize(audio_path)
+            if size > max_bytes:
+                raise ValueError("The audio file is larger than Telegram's safe upload limit.")
+            return {
+                "path": audio_path,
+                "temp_dir": temp_dir,
+                "title": (info or {}).get("title") or "Downloaded audio",
+                "duration": int(info["duration"]) if (info or {}).get("duration") else None,
+                "uploader": (info or {}).get("artist") or (info or {}).get("uploader"),
+            }
+        except Exception as exc:
+            errors.append(str(exc))
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            LOGGER.warning("Audio download failed for %s: %s", search.split(":", 1)[0], exc)
+
+    detail = errors[-1] if errors else "No audio result was found."
+    raise RuntimeError(
+        "Could not download this song without authentication. "
+        "Try another title or a SoundCloud link. " + detail[:300]
+    )
