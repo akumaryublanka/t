@@ -11,10 +11,11 @@ from waifu.config import Config
 
 def _rarity_num(value) -> int:
     if isinstance(value, int) and not isinstance(value, bool):
-        return value if value in Config.RARITY_MAP else 1
+        return value if value in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(value, 1)
     text = str(value or "").strip()
     if text.isdigit():
-        return int(text) if int(text) in Config.RARITY_MAP else 1
+        number = int(text)
+        return number if number in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(number, 1)
     canonical = Config.RARITY_LEGACY_MAP.get(text, text)
     for number, label in Config.RARITY_MAP.items():
         if label == canonical:
