@@ -64,6 +64,16 @@
       Character management, imports, group drop settings, broadcasts, and maintenance mode.
     </td>
   </tr>
+  <tr>
+    <td width="50%">
+      <h3>🎵 Voice Chat Music</h3>
+      Play or queue songs in group voice chats, pause/resume, skip tracks, control volume, and automatically leave when the queue ends.
+    </td>
+    <td width="50%">
+      <h3>🌸 MikasaVerse</h3>
+      Built for group communities with a separate, secure assistant account for voice-chat streaming.
+    </td>
+  </tr>
 </table>
 
 ## 🎨 Rarity guide
@@ -205,9 +215,21 @@ python -m waifu
 | `UPDATE_CHAT` | No | Updates channel username |
 | `PHOTO_URLS` | No | Comma-separated fallback image URLs |
 | `DROP_INTERVAL_MINUTES` | No | Timed drop interval; default: `15` |
-| `DEFAULT_MSG_FREQUENCY` | No | Messages between drops; default: `20` |
+| `DEFAULT_MSG_FREQUENCY` | No | Messages between drops; default: `20` |\n| `MUSIC_API_ID` | Music only | Telegram API ID from my.telegram.org |\n| `MUSIC_API_HASH` | Music only | Telegram API hash from my.telegram.org |\n| `MUSIC_SESSION_STRING` | Music only | Private Pyrogram session string for a separate Telegram user account |
 
 The module loader may also support `LOAD_MODULES` and `NO_LOAD_MODULES`, depending on the current implementation. Several mini-games are restricted to a configured group ID in code.
+
+### 🎵 Voice chat music setup
+
+The music player uses PyTgCalls with a separate Telegram **user account** as its voice-chat assistant. It cannot use the regular Bot API token as the voice-chat session.
+
+1. Create Telegram API credentials at [my.telegram.org](https://my.telegram.org).
+2. Generate a Pyrogram session string for a dedicated Telegram user account on a trusted device.
+3. Add `MUSIC_API_ID`, `MUSIC_API_HASH`, and `MUSIC_SESSION_STRING` to the Render service Environment as secret values.
+4. Add that assistant account to the same group and grant it permission to manage video chats.
+5. Restart/redeploy the service after setting the variables.
+
+**Never post your session string in chat, commit it to GitHub, or share it with anyone.** If the music variables are not set, the main MikasaVerse bot still starts normally and music commands explain that setup is required. Render's native Python runtime already includes FFmpeg and FFprobe.
 
 ## 🎮 How a catch works
 
@@ -275,6 +297,22 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 | `/scramble`, `/scramble_stop` | Guess scrambled character names in chat |
 | `/hclaim` | Claim a free character on cooldown |
 | `/couple` | Daily group couple |
+
+</details>
+
+<details>
+<summary><b>🎵 Voice Chat Music</b></summary>
+
+| Command | What it does |
+|---|---|
+| `/play song name or YouTube link` | Play a song or add it to the queue |
+| `/pause`, `/resume` | Pause or resume playback |
+| `/skip` | Play the next queued track |
+| `/end` | Stop playback, clear the queue and leave voice chat |
+| `/queue` | Show the current track and upcoming tracks |
+| `/volume 1-200` | Change volume |
+
+The assistant account must be configured separately and present in the group. The queue advances automatically and the assistant leaves when it becomes empty.
 
 </details>
 
