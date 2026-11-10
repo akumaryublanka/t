@@ -52,8 +52,19 @@ async def _get_random_character() -> dict | None:
     chars = await collection.find({}).to_list(length=5000)
     if not chars:
         return None
-    weights = [RARITY_WEIGHTS[_rarity_label(c.get("rarity", 1))] for c in chars]
-    return random.choices(chars, weights=weights, k=1)[0]
+    chars_by_rarity: dict[str, list[dict]] = {}
+    for char in chars:
+        rarity = _rarity_label(char.get("rarity", 1))
+        chars_by_rarity.setdefault(rarity, []).append(char)
+    available = [rarity for rarity in chars_by_rarity if RARITY_WEIGHTS.get(rarity, 0) > 0]
+    if not available:
+        return None
+    selected = random.choices(
+        available,
+        weights=[RARITY_WEIGHTS[rarity] for rarity in available],
+        k=1,
+    )[0]
+    return random.choice(chars_by_rarity[selected])
 
 
 async def _get_cooldown(user_id: int) -> datetime | None:
