@@ -101,7 +101,7 @@ async def trivia_callback(update: Update, context: CallbackContext) -> None:
     if not state or time.time() > state["expires"]:
         await query.answer("⌛ This trivia round has expired.", show_alert=True)
         return
-    if query.message.chat_id != state["chat_id"]:
+    if query.message.chat.id != state["chat_id"]:
         await query.answer("This round belongs to another chat.", show_alert=True)
         return
     if index != state["correct_index"]:
