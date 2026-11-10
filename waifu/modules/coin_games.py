@@ -104,7 +104,7 @@ async def _play_dice(update: Update, context: CallbackContext, *,
 
     _LAST_PLAYED[user.id] = now
     try:
-        result = await context.bot.send_dice(chat_id=message.chat_id, emoji=emoji)
+        result = await context.bot.send_dice(chat_id=message.chat.id, emoji=emoji)
     except Exception:
         await user_collection.update_one({"id": user.id}, {"$inc": {"coins": stake}})
         _LAST_PLAYED.pop(user.id, None)
