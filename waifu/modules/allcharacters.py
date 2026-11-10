@@ -14,6 +14,12 @@ from waifu.config import Config
 
 RARITY_MAP = Config.RARITY_MAP
 LABEL_TO_RARITY = {label.casefold(): number for number, label in RARITY_MAP.items()}
+LABEL_TO_RARITY.update({
+    old_label.casefold(): number
+    for old_label, canonical in Config.RARITY_LEGACY_MAP.items()
+    for number, label in RARITY_MAP.items()
+    if label == canonical
+})
 LEGACY_RARITY_NUMBERS = {26: 11, 27: 12, 28: 13, 29: 14, 30: 15, 31: 16}
 LABEL_TO_RARITY.update({"🎄 christmas": 13, "christmas": 13})
 
