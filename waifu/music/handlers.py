@@ -73,11 +73,20 @@ async def play(update: Update, context: CallbackContext) -> None:
                         "Pehle group mein Voice Chat ON karo, phir <code>/play</code> dobara bhejo. "
                         "Assistant khud join karke music play karega.",
                     )
+                elif any(marker in error_text for marker in ("sign in to confirm", "cookies", "youtube")):
+                    await reply(
+                        update,
+                        "🍪 <b>YouTube authentication failed.</b>\n"
+                        "Assistant group mein join ho gaya, lekin YouTube ne playback stream block kar di.\n"
+                        "Owner ko Render Secret Files mein valid Netscape-format YouTube cookies add karke "
+                        "<code>YTDLP_COOKIES_FILE</code> ka path set karna hoga.\n"
+                        f"<code>{escape(str(exc)[:240])}</code>",
+                    )
                 else:
                     await reply(
                         update,
-                        "❌ Couldn't join or start the voice chat. Check that the main MikasaVerse "
-                        "bot can invite members, and that the assistant account is allowed to join.\n"
+                        "❌ <b>Music playback start nahi ho paya.</b> Assistant join ho sakta hai, "
+                        "lekin voice chat playback ya stream start karte waqt error aaya.\n"
                         f"<code>{escape(str(exc)[:240])}</code>",
                     )
         else:
