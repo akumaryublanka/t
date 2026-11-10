@@ -22,6 +22,7 @@ _music_client: PyrogramClient | None = None
 _calls: PyTgCalls | None = None
 _sessions: dict[int, dict] = {}
 _chat_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+_resolved_chat_peers: set[int] = set()
 _startup_status = "not_started"
 
 
@@ -61,9 +62,35 @@ async def _send_chat_message(chat_id: int, text: str) -> None:
         LOGGER.exception("Could not send music status message to %s", chat_id)
 
 
+async def _ensure_chat_peer(chat_id: int) -> None:
+    """Populate this session's access-hash cache for the target group.
+
+    Session strings use in-memory storage. A numeric supergroup ID alone is
+    insufficient for MTProto calls until its peer/access hash has been seen.
+    get_dialogs() fetches the user's dialogs and populates Pyrogram's peer DB.
+    """
+    if _music_client is None:
+        raise RuntimeError("The music assistant Telegram session is not running.")
+    if chat_id in _resolved_chat_peers:
+        return
+
+    async for dialog in _music_client.get_dialogs():
+        if dialog.chat and dialog.chat.id == chat_id:
+            _resolved_chat_peers.add(chat_id)
+            LOGGER.info("Music assistant resolved group peer %s from its dialogs.", chat_id)
+            return
+
+    raise RuntimeError(
+        "The music assistant account could not find this group in its Telegram dialogs. "
+        "Add the assistant user account to this group, open the group once with that account, "
+        "and make it an admin with Manage Video Chats permission."
+    )
+
+
 async def _start_track(chat_id: int, track: dict) -> None:
     if _calls is None:
         raise RuntimeError("Music assistant is not connected.")
+    await _ensure_chat_peer(chat_id)
     stream_url = await asyncio.to_thread(stream_url_sync, track["source"])
     await _calls.play(
         chat_id,
@@ -185,6 +212,7 @@ async def stop_music() -> None:
                 exc_info=True,
             )
     _sessions.clear()
+    _resolved_chat_peers.clear()
 
     if _calls is not None:
         try:
