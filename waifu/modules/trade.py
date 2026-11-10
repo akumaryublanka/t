@@ -10,9 +10,22 @@ from telegram.constants import ParseMode
 from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler
 
 from waifu import application, user_collection, db
+from waifu.config import Config
 
 _trades: dict[str, dict] = {}
 _gifts:  dict[str, dict] = {}
+def _rarity_label(value) -> str:
+    if isinstance(value, int) and not isinstance(value, bool):
+        number = value if value in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(value, 1)
+        return Config.RARITY_MAP.get(number, Config.RARITY_MAP[1])
+    raw = str(value or Config.RARITY_MAP[1]).strip()
+    if raw.isdigit():
+        number = int(raw)
+        number = number if number in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(number, 1)
+        return Config.RARITY_MAP.get(number, Config.RARITY_MAP[1])
+    return Config.RARITY_LEGACY_MAP.get(raw, raw)
+
+
 _EXPIRY = 300
 
 
@@ -59,6 +72,10 @@ async def trade(update: Update, context: CallbackContext) -> None:
 
     a_char = next((c for c in (a_doc or {}).get("characters", []) if c["id"] == context.args[0]), None)
     b_char = next((c for c in (b_doc or {}).get("characters", []) if c["id"] == context.args[1]), None)
+    if a_char:
+        a_char = {**a_char, "rarity": _rarity_label(a_char.get("rarity"))}
+    if b_char:
+        b_char = {**b_char, "rarity": _rarity_label(b_char.get("rarity"))}
 
     if not a_char:
         await update.message.reply_text("❌ You don't own that character."); return
@@ -143,6 +160,8 @@ async def gift(update: Update, context: CallbackContext) -> None:
 
     a_doc = await user_collection.find_one({"id": a.id})
     char  = next((c for c in (a_doc or {}).get("characters", []) if c["id"] == context.args[0]), None)
+    if char:
+        char = {**char, "rarity": _rarity_label(char.get("rarity"))}
     if not char:
         await update.message.reply_text("❌ That character isn't in your collection."); return
 
