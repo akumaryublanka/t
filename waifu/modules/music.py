@@ -11,6 +11,19 @@ from collections import defaultdict
 from html import escape
 
 from pyrogram import Client as PyrogramClient
+import pyrogram.errors as pyrogram_errors
+
+# py-tgcalls expects legacy RPC error spellings that stock Pyrogram 2.0.106
+# does not export. Keep compatibility without changing the user session/client.
+if not hasattr(pyrogram_errors, "GroupcallForbidden"):
+    pyrogram_errors.GroupcallForbidden = getattr(
+        pyrogram_errors, "GroupCallForbidden", type("GroupcallForbidden", (Exception,), {})
+    )
+if not hasattr(pyrogram_errors, "GroupcallInvalid"):
+    pyrogram_errors.GroupcallInvalid = getattr(
+        pyrogram_errors, "GroupCallInvalid", type("GroupcallInvalid", (Exception,), {})
+    )
+
 from pytgcalls import PyTgCalls
 from pytgcalls import filters as call_filters
 from pytgcalls.types import GroupCallConfig, StreamEnded
