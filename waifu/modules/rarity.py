@@ -18,7 +18,7 @@ from waifu.config import Config
 
 
 RARITY_MAP = Config.RARITY_MAP
-RARITY_ORDER = list(RARITY_MAP)
+RARITY_ORDER = sorted(RARITY_MAP, key=lambda number: Config.RARITY_VALUE_MAP[number])
 
 # Canonical MikasaVerse collection prestige values.\nVALUE_MAP = Config.RARITY_VALUE_MAP
 
