@@ -245,6 +245,10 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 | `/protecc`, `/collect`, `/grab`, `/hunt` | Guess aliases |
 | `/harem`, `/collection` | Browse your collection |
 | `/profile` | View XP, level, and collection stats |
+| `/book [anime]` | Track anime-by-anime completion and see missing characters |
+| `/wish name`, `/wishlist`, `/unwish name` | Manage wishes and receive private drop alerts |
+| `/card character_id` | Generate a holographic MikasaVerse collector card |
+| `/achievements` | View collection, rarity, duel, streak, trivia and game milestones |
 | `/fav id` | Set a favorite character |
 | `/rarity` | See rarity counts and estimated value |
 | `/top`, `/ctop`, `/TopGroups` | View leaderboards |
@@ -256,11 +260,15 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 
 | Command | What it does |
 |---|---|
-| `/daily`, `/balance` | Claim daily Neko Coins and check both currency balances |
+| `/daily`, `/weekly`, `/balance` | Claim daily streak rewards, weekly bonus coins and check balances |
+| `/summon [10]` | Summon characters with a Rare-or-higher pity guarantee |
+| `/pay amount` | Transfer Neko Coins by replying to another player |
+| `/bet`, `/dart`, `/bowl`, `/basket` | Play animated virtual-coin dice challenges |
 | `/sell`, `/market`, `/buy`, `/delist` | Marketplace actions using Neko Coins |
 | `/redeem CODE` | Redeem a code |
 | `/mines`, `/cashout` | Play Mines and cash out |
 | `/quiz [easy\|medium\|hard]` | Start the image quiz |
+| `/trivia` | Start a timed anime trivia challenge |
 | `/qlb` | Quiz leaderboard |
 | `/nguess`, `/nguess_stop` | Start or stop name guessing |
 | `/tower`, `/tower_stop` | Climb the Infinite Tower with maths challenges |
@@ -276,6 +284,7 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 | Command | What it does |
 |---|---|
 | `/duel` | Challenge another user (reply) |
+| `/ship` | Calculate a daily compatibility score with another player (reply) |
 | `/trade` | Propose a character trade |
 | `/gift` | Gift a character |
 | `/marry` | Propose marriage (reply) |
