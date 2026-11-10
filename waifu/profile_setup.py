@@ -17,8 +17,8 @@ DESCRIPTION_TEXT = (
     "🎴 Catch anime characters as they drop in your group. Build your collection, "
     "hunt rare editions, earn Neko Coins & Gems, trade or gift characters, and "
     "challenge friends in PvP duels.\n\n"
-    "🎮 Play mini-games like Quiz, "
-    "Mines, Tower and Scramble.\n\n"
+    "🎮 Play Quiz, Trivia, Mines, Tower, Scramble and dice mini-games. "
+    "Summon characters, earn streak rewards, build your wishlist, and create holographic cards.\n\n"
     "⚔️ Collect. Trade. Compete. Become a legend!"
 )
 
@@ -38,6 +38,12 @@ BOT_COMMANDS = [
     BotCommand("hclaim", "🎁 Claim a free character when available"),
     BotCommand("fav", "⭐ Set your favourite character"),
     BotCommand("profile", "👤 View your level, XP and player stats"),
+    BotCommand("book", "📚 Track anime collection completion"),
+    BotCommand("wish", "⭐ Add a character to your wishlist"),
+    BotCommand("wishlist", "🔔 View your wishlist"),
+    BotCommand("unwish", "➖ Remove a character from your wishlist"),
+    BotCommand("card", "🎴 Create a holographic character card"),
+    BotCommand("achievements", "🏅 View your unlocked milestones"),
     BotCommand("rarity", "💎 Explore your collection's rarity"),
 
     # 🏆 Leaderboards
@@ -46,6 +52,9 @@ BOT_COMMANDS = [
 
     # 🪙 Neko economy & marketplace
     BotCommand("daily", "🪙 Collect your daily Neko Coins"),
+    BotCommand("weekly", "🌟 Collect your weekly Neko Coins"),
+    BotCommand("summon", "🎴 Summon characters with Neko Coins"),
+    BotCommand("pay", "💸 Transfer Neko Coins to a player"),
     BotCommand("balance", "💰 Check your Coins and Gems"),
     BotCommand("exchange", "🔄 Exchange Coins for Gems"),
     BotCommand("exgem", "💠 Convert Gems back into Coins"),
@@ -58,6 +67,7 @@ BOT_COMMANDS = [
 
     # 🤝 Social & relationships
     BotCommand("couple", "🌹 Discover today's group couple"),
+    BotCommand("ship", "💘 Check player compatibility (reply)"),
     BotCommand("duel", "⚔️ Challenge a player to a character duel"),
     BotCommand("trade", "🤝 Trade characters with another player"),
     BotCommand("gift", "🎀 Send a character to a friend"),
@@ -67,6 +77,11 @@ BOT_COMMANDS = [
 
     # 🎮 Mini-games
     BotCommand("quiz", "🧩 Guess the anime character from an image"),
+    BotCommand("trivia", "🧠 Play timed anime trivia"),
+    BotCommand("bet", "🎲 Play a virtual coin dice challenge"),
+    BotCommand("dart", "🎯 Try the virtual dart challenge"),
+    BotCommand("bowl", "🎳 Play virtual bowling"),
+    BotCommand("basket", "🏀 Play virtual basketball"),
     BotCommand("qlb", "🎯 View the anime quiz leaderboard"),
     BotCommand("mines", "💣 Play the Mines challenge"),
     BotCommand("cashout", "💵 Collect your Mines winnings"),
