@@ -27,7 +27,9 @@ _MEDALS = {
 def _rarity_icon(rarity: str) -> str:
     raw = str(rarity or "").strip()
     if raw.isdigit():
-        canonical = Config.RARITY_MAP.get(int(raw), raw)
+        number = int(raw)
+        number = number if number in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(number, 1)
+        canonical = Config.RARITY_MAP.get(number, Config.RARITY_MAP[1])
     else:
         canonical = Config.RARITY_LEGACY_MAP.get(raw, raw)
     return _MEDALS.get(canonical, "🎴")
