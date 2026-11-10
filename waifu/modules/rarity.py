@@ -20,31 +20,19 @@ from waifu.config import Config
 RARITY_MAP = Config.RARITY_MAP
 RARITY_ORDER = list(RARITY_MAP)
 
-# Estimated collection values in Grey Credit; event variants have separate values.
-VALUE_MAP = {
-    1: 100,
-    2: 300,
-    3: 600,
-    4: 1000,
-    5: 1500,
-    6: 2500,
-    7: 3500,
-    8: 4000,
-    9: 5000,
-    10: 6500,
-    11: 7000,
-    12: 7000,
-    13: 7500,
-    14: 7000,
-    15: 7500,
-    16: 8000,
-}
+# Canonical MikasaVerse collection prestige values.\nVALUE_MAP = Config.RARITY_VALUE_MAP
 
 BAR_LENGTH = 12
 
 # Backward compatibility for character records using the old rarity labels.
 LEGACY_RARITY_MAP = {label: number for number, label in RARITY_MAP.items()}
-# Preserve labels and numeric IDs from the previous event-rarity numbering.
+LEGACY_RARITY_MAP.update({
+    old_label: number
+    for old_label, new_label in Config.RARITY_LEGACY_MAP.items()
+    for number, current_label in RARITY_MAP.items()
+    if current_label == new_label
+})
+# Preserve numeric IDs from the previous event-rarity numbering.
 LEGACY_RARITY_MAP.update({"🎄 Christmas": 13, "Christmas": 13})
 LEGACY_RARITY_NUMBERS = {26: 11, 27: 12, 28: 13, 29: 14, 30: 15, 31: 16}
 
