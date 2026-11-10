@@ -9,7 +9,8 @@ from telegram.ext import CallbackContext, CommandHandler
 from waifu import application, collection, user_collection, db
 from waifu.config import Config
 
-# Same canonical rarity odds as normal drops and /hclaim.\n_RARITY_WEIGHTS = Config.RARITY_WEIGHT_MAP
+# Same canonical rarity odds as normal drops and /hclaim.
+_RARITY_WEIGHTS = Config.RARITY_WEIGHT_MAP
 _PITY_LIMIT = 10
 
 
@@ -140,7 +141,7 @@ async def summon(update: Update, context: CallbackContext) -> None:
     lines = []
     best = max(pulls, key=lambda c: _rarity_number(c.get("rarity", 1)))
     for index, char in enumerate(pulls, 1):
-        rarity = char.get("rarity", "⚪ Common")
+        rarity = Config.RARITY_MAP[_rarity_number(char.get("rarity", 1))]
         duplicate = "  ↳ <i>Duplicate</i>" if str(char.get("id")) in old_ids else ""
         lines.append(
             f"{index}. {escape(str(rarity))} <b>{escape(str(char.get('name', 'Unknown')))}</b>"
