@@ -301,8 +301,13 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 | `/end` | Stop playback, clear the queue and leave voice chat |
 | `/queue` | Show the current track and upcoming tracks |
 | `/volume 1-200` | Change volume |
+| `/song query` | Download a song as an MP3 audio file |
+| `/favorite` | Save the current track to personal favourites |
+| `/favs` | View saved favourites |
+| `/playfav number` | Queue a saved favourite |
+| `/delfav number` | Delete a saved favourite |
 
-The assistant account is configured separately and can join a group automatically using a temporary invite. The main bot needs Invite Users permission; the assistant does not need to be an admin. The player also includes inline controls, playlist queueing, loop/replay, shuffle and queue clearing. YouTube anonymous extraction can still be blocked by YouTube; playlist and track availability is not guaranteed.
+The assistant account is configured separately and can join a group automatically using a temporary invite. The main bot needs Invite Users permission; the assistant does not need to be an admin. The player also includes inline controls, playlist queueing, loop/replay, shuffle and queue clearing. YouTube anonymous extraction can still be blocked by YouTube; playlist and track availability is not guaranteed. Song downloads are sent as MP3 audio files, and personal favourite tracks are stored in MongoDB. Download and playback availability still depends on the source platform allowing anonymous extraction.
 
 </details>
 
