@@ -415,7 +415,7 @@ async def _send_drop(chat_id: int, bot) -> None:
         )
         _active_msg[chat_id] = msg.message_id
         LOGGER.info("Drop sent to chat %s: %s (%s)%s",
-                    chat_id, char["name"], char.get("rarity", "?"),
+                    chat_id, char["name"], _rarity_label(char.get("rarity", Config.RARITY_MAP[1])),
                     " [SPECIAL]" if char.get("is_special") else "")
         _last_drop_sent[chat_id] = time.time()
         # Best-effort private alerts for players who wishlisted this character.
@@ -609,7 +609,7 @@ async def guess(update: Update, context: CallbackContext) -> None:
         starting_coins = 0
 
     active_events = await _active_event_details()
-    char_rarity_keys = _rarity_keys(_rarity_label(char.get("rarity", "⚪ Common")))
+    char_rarity_keys = _rarity_keys(_rarity_label(_rarity_label(char.get("rarity", Config.RARITY_MAP[1]))))
     event = next((active_events[key] for key in char_rarity_keys if key in active_events), None)
     try:
         event_bonus = max(0, min(100000000, int((event or {}).get("reward", 0))))
@@ -648,7 +648,7 @@ async def guess(update: Update, context: CallbackContext) -> None:
         upsert=True,
     )
 
-    rarity     = char.get("rarity", "⚪ Common")
+    rarity     = _rarity_label(char.get("rarity", Config.RARITY_MAP[1]))
     is_special = char.get("is_special", False)
     special_tag = "🌟 <b>SPECIAL CHARACTER CLAIMED!</b>\n\n" if is_special else ""
 
@@ -736,13 +736,13 @@ async def setspecial(update: Update, context: CallbackContext) -> None:
         "char_id": char_id,
         "name":    char["name"],
         "anime":   char["anime"],
-        "rarity":  char.get("rarity", "Unknown"),
+        "rarity":  _rarity_label(char.get("rarity", Config.RARITY_MAP[1])),
     })
 
     await update.message.reply_text(
         f"🌟 <b>{escape(char['name'])}</b> added to special drop list!\n"
-        f"💎 Rarity: {char.get('rarity', 'Unknown')}\n"
-        f"🎯 Drop chance: Very Rare (0.5%)",
+        f"💎 Rarity: {_rarity_label(char.get('rarity', Config.RARITY_MAP[1]))}\n"
+        f"🎯 Drop chance: 0.1% of the normal rarity weight",
         parse_mode=ParseMode.HTML,
     )
 
@@ -788,7 +788,7 @@ async def speciallist(update: Update, context: CallbackContext) -> None:
     lines = ["🌟 <b>Special Characters List</b>\n"]
     for s in specials:
         lines.append(
-            f"🎴 <b>{escape(s['name'])}</b> — {s.get('rarity', '?')}\n"
+            f"🎴 <b>{escape(s['name'])}</b> — {_rarity_label(s.get('rarity', Config.RARITY_MAP[1]))}\n"
             f"   🆔 <code>{s['char_id']}</code>"
         )
 
