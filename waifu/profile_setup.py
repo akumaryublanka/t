@@ -99,6 +99,11 @@ BOT_COMMANDS = [
     BotCommand("skip", "⏭️ Skip the current track"),
     BotCommand("end", "⏹️ Stop music and clear the queue"),
     BotCommand("queue", "📃 View the music queue"),
+    BotCommand("current", "🎧 Show the current track"),
+    BotCommand("replay", "🔁 Replay the current track"),
+    BotCommand("loop", "🔂 Repeat the current track 0-10 times"),
+    BotCommand("shuffle", "🔀 Shuffle upcoming tracks"),
+    BotCommand("clearqueue", "🧹 Clear upcoming tracks"),
     BotCommand("volume", "🔊 Change music volume"),
 ]
 

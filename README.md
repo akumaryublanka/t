@@ -291,9 +291,13 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 
 | Command | What it does |
 |---|---|
-| `/play song name or YouTube link` | Play a song or add it to the queue |
+| `/play song name, YouTube link, or playlist link` | Play a song or queue up to 20 playlist tracks |
 | `/pause`, `/resume` | Pause or resume playback |
 | `/skip` | Play the next queued track |
+| `/current`, `/replay` | View or restart the current track |
+| `/loop 0-10` | Repeat the current track; 0 disables repeat |
+| `/shuffle` | Shuffle upcoming tracks |
+| `/clearqueue` | Clear upcoming tracks without stopping the current song |
 | `/end` | Stop playback, clear the queue and leave voice chat |
 | `/queue` | Show the current track and upcoming tracks |
 | `/volume 1-200` | Change volume |
