@@ -114,7 +114,7 @@ async def _play_dice(update: Update, context: CallbackContext, *,
     value = result.dice.value
     if win_check(value):
         payout = int(stake * multiplier)
-        await user_collection.update_one({"id": user.id}, {"$inc": {"coins": payout, "wins": 1}})
+        await user_collection.update_one({"id": user.id}, {"$inc": {"coins": payout, "coin_game_wins": 1}})
         outcome = (
             f"🎉 <b>YOU WON!</b> Dice: <b>{value}</b>\n"
             f"🟡 Payout: <b>+{payout:,}</b> coins\n"
