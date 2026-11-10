@@ -213,9 +213,10 @@ async def _active_event_details() -> dict[str, dict]:
             reward = max(0, min(100000000, int(event.get("reward", 0) or 0)))
         except (TypeError, ValueError):
             reward = 0
+        raw_rarity = str(event.get("rarity", "")).strip()
         details = {
             "name": str(event.get("name", "Event"))[:80],
-            "rarity": str(event.get("rarity", "")).strip(),
+            "rarity": Config.RARITY_LEGACY_MAP.get(raw_rarity, raw_rarity),
             "reward": reward,
         }
         for key in _rarity_keys(details["rarity"] or details["name"]):
