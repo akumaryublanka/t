@@ -6,6 +6,7 @@ import os
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+import shutil
 
 from yt_dlp import YoutubeDL
 
@@ -13,20 +14,31 @@ LOGGER = logging.getLogger("waifu.music")
 
 
 def _cookie_file(temp_dir: str) -> str | None:
-    """Resolve cookies from a mounted secret file or a private env-backed temp file."""
+    """Copy cookies into writable temporary storage before yt-dlp uses them.
+
+    Render Secret Files are read-only. yt-dlp may update its cookie jar when
+    closing, so never pass the mounted secret path directly to yt-dlp.
+    """
     configured_path = os.getenv("YTDLP_COOKIES_FILE")
-    if configured_path:
-        path = Path(configured_path).expanduser()
-        if not path.is_file():
+    source_path = Path(configured_path).expanduser() if configured_path else None
+
+    if source_path is None:
+        local_cookie_file = Path("cookies.txt")
+        if local_cookie_file.is_file():
+            source_path = local_cookie_file
+
+    if source_path is not None:
+        if not source_path.is_file():
             raise FileNotFoundError(
                 "YTDLP_COOKIES_FILE is set, but the configured cookies file does not exist."
             )
-        return str(path)
-
-    # Also support a Render secret file mounted as ./cookies.txt.
-    local_cookie_file = Path("cookies.txt")
-    if local_cookie_file.is_file():
-        return str(local_cookie_file.resolve())
+        cookie_path = Path(temp_dir) / "cookies.txt"
+        shutil.copyfile(source_path, cookie_path)
+        try:
+            cookie_path.chmod(0o600)
+        except OSError:
+            LOGGER.warning("Could not restrict permissions on temporary YouTube cookie file.")
+        return str(cookie_path)
 
     encoded = os.getenv("YOUTUBE_COOKIES_B64", "").strip()
     raw = os.getenv("YOUTUBE_COOKIES", "")
