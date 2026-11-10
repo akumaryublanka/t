@@ -147,7 +147,7 @@ async def bowl(update: Update, context: CallbackContext) -> None:
 
 
 async def basket(update: Update, context: CallbackContext) -> None:
-    await _play_dice(update, context, emoji="🏀", win_check=lambda value: value >= 4, multiplier=2.2, game_name="Basket")
+    await _play_dice(update, context, emoji="🏀", win_check=lambda value: value == 5, multiplier=2.2, game_name="Basket")
 
 
 application.add_handler(CommandHandler("pay", pay, block=False))
