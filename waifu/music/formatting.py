@@ -33,6 +33,7 @@ def player_keyboard(chat_id: int, paused: bool = False) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton("📃 Queue", callback_data=f"mv:queue:{chat_id}"),
+                InlineKeyboardButton("❤️ Save", callback_data=f"mv:fav:{chat_id}"),
             ],
         ]
     )
