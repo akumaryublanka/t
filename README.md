@@ -87,17 +87,17 @@ The `/upload` command uses these stable rarity IDs:
 | 3 | 🔮 Prime | 500 | 250 |
 | 4 | 🟣 Epic | 1,000 | 100 |
 | 5 | 🟡 Legendary | 2,500 | 40 |
-| 6 | 🌟 Mythic | 55,000 | 180 |
-| 7 | 💠 Celestial | 45,000 | 220 |
-| 8 | 💮 Special Edition | 35,000 | 280 |
-| 9 | 🪽 Limited Edition | 75,000 | 100 |
-| 10 | 🔞 Extreme | 100,000 | 10 |
-| 11 | ❄️ Winter | 10,000 | 1,000 |
-| 12 | ☀️ Summer | 12,000 | 800 |
-| 13 | 👑 Elite | 15,000 | 700 |
-| 14 | 🎭 Cosplay | 18,000 | 600 |
-| 15 | 🎃 Halloween | 20,000 | 500 |
-| 16 | 💝 Valentine's | 25,000 | 400 |
+| 6 | 🌟 Mythic | 55,000 | 1.8 |
+| 7 | 💠 Celestial | 45,000 | 2.2 |
+| 8 | 💮 Special Edition | 35,000 | 2.8 |
+| 9 | 🪽 Limited Edition | 75,000 | 1.0 |
+| 10 | 🔞 Extreme | 100,000 | 0.1 |
+| 11 | ❄️ Winter | 10,000 | 10 |
+| 12 | ☀️ Summer | 12,000 | 8 |
+| 13 | 👑 Elite | 15,000 | 7 |
+| 14 | 🎭 Cosplay | 18,000 | 6 |
+| 15 | 🎃 Halloween | 20,000 | 5 |
+| 16 | 💝 Valentine's | 25,000 | 4 |
 
 Collection value is a prestige score used by `/profile` and `/rarity`. Spawn weight is a separate relative chance: **lower weight means a rarer character**. Extreme is the lowest-weight standard tier and the highest-value tier. Event rarities (IDs 11–16) only appear during an enabled event window. The Owner Panel can customize normal-drop weights after its rarity settings are migrated to the 16-tier list; HClaim and gacha use the shared base weights.
 
