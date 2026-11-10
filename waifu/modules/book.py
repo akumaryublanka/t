@@ -99,6 +99,10 @@ async def collection_book(update: Update, context: CallbackContext) -> None:
     await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
 
 
+async def book_noop(update: Update, context: CallbackContext) -> None:
+    await update.callback_query.answer()
+
+
 async def book_callback(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     parts = query.data.split(":")
@@ -116,4 +120,4 @@ async def book_callback(update: Update, context: CallbackContext) -> None:
 
 application.add_handler(CommandHandler(["book", "collectionbook"], collection_book, block=False))
 application.add_handler(CallbackQueryHandler(book_callback, pattern=r"^book:\d+:\d+$", block=False))
-application.add_handler(CallbackQueryHandler(lambda u, c: u.callback_query.answer(), pattern=r"^book:noop$", block=False))
+application.add_handler(CallbackQueryHandler(book_noop, pattern=r"^book:noop$", block=False))
