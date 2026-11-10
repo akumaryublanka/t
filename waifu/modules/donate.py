@@ -57,7 +57,11 @@ async def donate(update: Update, context: CallbackContext) -> None:
     # Store the current rarity label even when donating an older character.
     raw_rarity = char.get("rarity", Config.RARITY_MAP[1])
     rarity_text = str(raw_rarity).strip()
-    char = {**char, "rarity": Config.RARITY_MAP.get(int(rarity_text), Config.RARITY_MAP[1]) if rarity_text.isdigit() else Config.RARITY_LEGACY_MAP.get(rarity_text, rarity_text)}
+    number = int(rarity_text) if rarity_text.isdigit() else None
+    if number is not None:
+        number = number if number in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(number, 1)
+    canonical_rarity = Config.RARITY_MAP.get(number, Config.RARITY_MAP[1]) if number is not None else Config.RARITY_LEGACY_MAP.get(rarity_text, rarity_text)
+    char = {**char, "rarity": canonical_rarity}
 
     # Add character to target user
     await user_collection.update_one(
