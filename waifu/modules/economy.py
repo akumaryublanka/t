@@ -3,6 +3,7 @@ modules/economy.py — Daily coins, balance, and marketplace.
 """
 import math
 import time
+from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 from html import escape
 
@@ -67,40 +68,117 @@ async def balance(update: Update, context: CallbackContext) -> None:
 # ── /daily ────────────────────────────────────────────────────────────────────
 
 async def daily(update: Update, context: CallbackContext) -> None:
-    u   = update.effective_user
+    u = update.effective_user
     doc = await _ensure_user(u.id, u)
     now = time.time()
-    last = doc.get("last_daily", 0)
     settings_doc = await db["miniapp_settings"].find_one({"_id": "game"})
     settings = (settings_doc or {}).get("data") or {}
     try:
         cooldown = max(60, min(604800, int(settings.get("daily_cooldown_seconds", _DAILY_COOLDOWN))))
     except (TypeError, ValueError):
         cooldown = _DAILY_COOLDOWN
+    try:
+        base_reward = max(0, min(100000000, int(settings.get("daily_reward", Config.DAILY_NEKO_COINS))))
+    except (TypeError, ValueError):
+        base_reward = Config.DAILY_NEKO_COINS
 
-    if now - last < cooldown:
-        remaining = int(cooldown - (now - last))
+    # Continue a streak only when the previous successful claim was yesterday.
+    today = datetime.fromtimestamp(now, timezone.utc).date()
+    previous_day = doc.get("last_daily_day")
+    if not previous_day and doc.get("last_daily"):
+        previous_day = datetime.fromtimestamp(float(doc["last_daily"]), timezone.utc).date().isoformat()
+    today_text = today.isoformat()
+    yesterday_text = (today - timedelta(days=1)).isoformat()
+    old_streak = max(0, int(doc.get("daily_streak", 0) or 0))
+    if previous_day == today_text:
+        streak = max(1, old_streak)
+    elif previous_day == yesterday_text:
+        streak = old_streak + 1
+    else:
+        streak = 1
+    streak_bonus = min(250, max(0, (streak - 1) * 25))
+    reward = base_reward + streak_bonus
+
+    # Atomic cooldown guard prevents double rewards from simultaneous requests.
+    claimed = await user_collection.update_one(
+        {
+            "id": u.id,
+            "$or": [
+                {"last_daily": {"$exists": False}},
+                {"last_daily": {"$lte": now - cooldown}},
+            ],
+        },
+        {
+            "$inc": {"coins": reward},
+            "$set": {
+                "last_daily": now,
+                "last_daily_day": today_text,
+                "daily_streak": streak,
+            },
+        },
+    )
+    if not claimed.modified_count:
+        latest = await user_collection.find_one({"id": u.id}) or doc
+        last = float(latest.get("last_daily", 0) or 0)
+        remaining = max(1, int(cooldown - (now - last)))
         await update.message.reply_text(
-            f"⏳ Daily already claimed!\nCome back in <b>{_fmt_time(remaining)}</b>.",
+            f"⏳ Daily already claimed! Come back in <b>{_fmt_time(remaining)}</b>.",
             parse_mode=ParseMode.HTML,
         )
         return
 
-    try:
-        reward = max(0, min(100000000, int(settings.get("daily_reward", Config.DAILY_NEKO_COINS))))
-    except (TypeError, ValueError):
-        reward = Config.DAILY_NEKO_COINS
-    await user_collection.update_one(
-        {"id": u.id},
-        {"$inc": {"coins": reward}, "$set": {"last_daily": now}},
-    )
+    new_balance = int(doc.get("coins", 0) or 0) + reward
     await update.message.reply_text(
-        f"🎁 <b>Daily reward!</b>\n\n"
-        f"You received <b>{reward:,} 🟡 Neko Coins</b>\n"
-        f"Current Neko Coins: <b>{doc.get('coins', 0) + reward:,}</b>",
+        "🎁 <b>DAILY REWARD CLAIMED!</b>\n\n"
+        f"🟡 Base reward: <b>+{base_reward:,}</b>\n"
+        f"🔥 Daily streak: <b>{streak} day(s)</b>\n"
+        f"✨ Streak bonus: <b>+{streak_bonus:,}</b>\n"
+        f"💰 Total received: <b>+{reward:,} Neko Coins</b>\n"
+        f"🏦 New balance: <b>{new_balance:,}</b>",
         parse_mode=ParseMode.HTML,
     )
 
+
+async def weekly(update: Update, context: CallbackContext) -> None:
+    u = update.effective_user
+    doc = await _ensure_user(u.id, u)
+    now = time.time()
+    cooldown = 7 * 24 * 60 * 60
+    settings_doc = await db["miniapp_settings"].find_one({"_id": "game"})
+    settings = (settings_doc or {}).get("data") or {}
+    try:
+        reward = max(0, min(100000000, int(settings.get("weekly_reward", 1200))))
+    except (TypeError, ValueError):
+        reward = 1200
+
+    claimed = await user_collection.update_one(
+        {
+            "id": u.id,
+            "$or": [
+                {"last_weekly": {"$exists": False}},
+                {"last_weekly": {"$lte": now - cooldown}},
+            ],
+        },
+        {"$inc": {"coins": reward}, "$set": {"last_weekly": now}},
+    )
+    if not claimed.modified_count:
+        latest = await user_collection.find_one({"id": u.id}) or doc
+        last = float(latest.get("last_weekly", 0) or 0)
+        remaining = max(1, int(cooldown - (now - last)))
+        await update.message.reply_text(
+            f"⏳ Weekly reward already claimed. Come back in <b>{_fmt_time(remaining)}</b>.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    balance_now = int(doc.get("coins", 0) or 0) + reward
+    await update.message.reply_text(
+        "🌟 <b>WEEKLY BONUS CLAIMED!</b>\n\n"
+        f"🎁 You received <b>+{reward:,} Neko Coins</b>\n"
+        f"🏦 New balance: <b>{balance_now:,}</b>\n"
+        "See you next week, collector!",
+        parse_mode=ParseMode.HTML,
+    )
 
 # ── /sell ─────────────────────────────────────────────────────────────────────
 
@@ -503,6 +581,7 @@ async def exgem(update: Update, context: CallbackContext) -> None:
 
 application.add_handler(CommandHandler("balance", balance, block=False))
 application.add_handler(CommandHandler("daily",   daily,   block=False))
+application.add_handler(CommandHandler("weekly", weekly, block=False))
 application.add_handler(CommandHandler("exchange", exchange, block=False))
 application.add_handler(CommandHandler("exgem", exgem, block=False))
 application.add_handler(CommandHandler("sell",    sell,    block=False))
