@@ -13,7 +13,7 @@ from pytgcalls.types import GroupCallConfig, StreamEnded
 
 from waifu import application
 from waifu.music.config import get_music_credentials
-from waifu.music.downloader import stream_url_sync
+from waifu.music.downloader import download_track_sync
 from waifu.music.formatting import duration, player_keyboard
 
 LOGGER = logging.getLogger("waifu.music")
@@ -28,6 +28,28 @@ _startup_status = "not_started"
 
 def get_calls() -> PyTgCalls | None:
     return _calls
+
+
+def get_music_client() -> PyrogramClient | None:
+    return _music_client
+
+
+async def _cleanup_temp_dir(path: str | None) -> None:
+    if path:
+        await asyncio.to_thread(shutil.rmtree, path, ignore_errors=True)
+
+
+async def stop_chat(chat_id: int) -> None:
+    """Stop one group's stream and release its downloaded audio."""
+    state = _sessions.pop(chat_id, None)
+    temp_dir = state.get("active_temp_dir") if state else None
+    try:
+        if _calls is not None:
+            await _calls.leave_call(chat_id)
+    except Exception:
+        LOGGER.debug("Voice chat was already left in %s.", chat_id, exc_info=True)
+    finally:
+        await _cleanup_temp_dir(temp_dir)
 
 
 def unavailable_message() -> str:
@@ -136,24 +158,34 @@ async def _ensure_chat_peer(chat_id: int) -> None:
 
 
 async def _start_track(chat_id: int, track: dict) -> None:
+    """Download locally and pass the file to PyTgCalls/FFmpeg."""
     if _calls is None:
         raise RuntimeError("Music assistant is not connected.")
     await _ensure_chat_peer(chat_id)
-    stream_url = await asyncio.to_thread(stream_url_sync, track["source"])
-    await _calls.play(
-        chat_id,
-        stream_url,
-        GroupCallConfig(auto_start=False),
-    )
+    downloaded = await asyncio.to_thread(download_track_sync, track["source"])
+    new_temp_dir = downloaded["temp_dir"]
+    try:
+        # PyTgCalls 2.3.x accepts a local path and probes it with FFmpeg.
+        await _calls.play(chat_id, downloaded["path"], GroupCallConfig(auto_start=False))
+    except Exception:
+        await _cleanup_temp_dir(new_temp_dir)
+        raise
+
     state = _sessions.setdefault(
         chat_id,
-        {"current": None, "queue": [], "volume": 100, "loop_remaining": 0, "paused": False},
+        {"current": None, "queue": [], "volume": 100,
+         "loop_remaining": 0, "paused": False, "active_temp_dir": None},
     )
+    previous_temp_dir = state.get("active_temp_dir")
     state.setdefault("loop_remaining", 0)
     state.setdefault("paused", False)
     state["current"] = track
     state["paused"] = False
-
+    state["active_temp_dir"] = new_temp_dir
+    if previous_temp_dir and previous_temp_dir != new_temp_dir:
+        await _cleanup_temp_dir(previous_temp_dir)
+    LOGGER.info("Local audio stream started in chat %s: %s",
+                chat_id, track.get("title", "Unknown track"))
 
 async def replay_current(chat_id: int) -> bool:
     """Restart the current track without changing the upcoming queue."""
@@ -214,12 +246,15 @@ async def _advance_queue(
                 LOGGER.exception("Could not start the next queued track in %s", chat_id)
                 continue
 
-        _sessions.pop(chat_id, None)
-        if _calls is not None:
-            try:
+        finished_state = _sessions.pop(chat_id, None)
+        finished_temp_dir = finished_state.get("active_temp_dir") if finished_state else None
+        try:
+            if _calls is not None:
                 await _calls.leave_call(chat_id)
-            except Exception:
-                LOGGER.debug("Voice chat was already left in %s.", chat_id, exc_info=True)
+        except Exception:
+            LOGGER.debug("Voice chat was already left in %s.", chat_id, exc_info=True)
+        finally:
+            await _cleanup_temp_dir(finished_temp_dir)
         if announce:
             await _send_chat_message(
                 chat_id,
@@ -284,23 +319,18 @@ async def start_music() -> None:
 
 
 async def stop_music() -> None:
-    """Close the voice-chat assistant cleanly during service shutdown."""
+    """Close all calls and delete downloaded audio on service shutdown."""
     global _music_client, _calls, _startup_status
-
-    for chat_id in list(_sessions):
+    for chat_id, state in list(_sessions.items()):
         try:
             if _calls is not None:
                 await _calls.leave_call(chat_id)
         except Exception:
-            LOGGER.debug(
-                "Could not leave voice chat %s during shutdown.",
-                chat_id,
-                exc_info=True,
-            )
+            LOGGER.debug("Could not leave voice chat %s during shutdown.", chat_id, exc_info=True)
+        finally:
+            await _cleanup_temp_dir(state.get("active_temp_dir"))
     _sessions.clear()
     _resolved_chat_peers.clear()
-
-    # PyTgCalls 2.3.x has no public stop() method; active calls were left above.
     if _music_client is not None:
         try:
             await _music_client.stop()

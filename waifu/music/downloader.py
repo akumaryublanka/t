@@ -89,6 +89,67 @@ def stream_url_sync(source: str) -> str:
 
 
 
+
+def download_track_sync(source: str, max_bytes: int = 80 * 1024 * 1024) -> dict:
+    """Download original audio to a temporary local file for VC playback."""
+    import glob
+    import os
+    import shutil
+    import tempfile
+
+    if not source or len(source) > 2000:
+        raise ValueError("A valid song source is required.")
+    is_url = source.startswith(("http://", "https://"))
+    searches = [source] if is_url else [f"ytsearch1:{source}", f"scsearch1:{source}"]
+    errors = []
+    for search in searches:
+        temp_dir = tempfile.mkdtemp(prefix="mikasa-vc-")
+        options = {
+            **_youtube_options(),
+            "format": "bestaudio/best",
+            "skip_download": False,
+            "noplaylist": True,
+            "playlist_items": "1",
+            "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
+            "max_filesize": max_bytes,
+            "overwrites": True,
+        }
+        try:
+            with YoutubeDL(options) as ydl:
+                info = ydl.extract_info(search, download=True)
+            if info and info.get("entries"):
+                info = next((entry for entry in info["entries"] if entry), None)
+            ignored = {".part", ".ytdl", ".json", ".jpg", ".jpeg", ".png", ".webp"}
+            files = [
+                path for path in glob.glob(os.path.join(temp_dir, "*"))
+                if os.path.isfile(path)
+                and os.path.splitext(path)[1].lower() not in ignored
+                and not path.endswith(".part")
+            ]
+            if not files:
+                raise RuntimeError("yt-dlp did not create a playable audio file.")
+            audio_path = max(files, key=os.path.getsize)
+            size = os.path.getsize(audio_path)
+            if size <= 0:
+                raise RuntimeError("The downloaded audio file is empty.")
+            if size > max_bytes:
+                raise ValueError("The song is too large for safe voice-chat streaming.")
+            return {
+                "path": audio_path,
+                "temp_dir": temp_dir,
+                "title": (info or {}).get("title") or "Unknown track",
+                "duration": int(info["duration"]) if (info or {}).get("duration") else None,
+                "uploader": (info or {}).get("artist") or (info or {}).get("uploader"),
+            }
+        except Exception as exc:
+            errors.append(str(exc))
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            LOGGER.warning("VC audio download failed for %s: %s",
+                           search.split(":", 1)[0] if ":" in search else "direct URL", exc)
+    detail = errors[-1] if errors else "No playable audio was found."
+    raise RuntimeError("Could not prepare this track for voice-chat playback. "
+                       "Try another song or a SoundCloud link. " + detail[:280])
+
 def extract_playlist_sync(query: str, max_tracks: int = 20) -> list[dict]:
     """Return a bounded list of flat playlist entries without downloading media."""
     if not 1 <= max_tracks <= 50:

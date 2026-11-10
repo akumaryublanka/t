@@ -187,11 +187,7 @@ async def end(update: Update, context: CallbackContext) -> None:
         return
     chat_id = update.effective_chat.id
     async with runtime._chat_locks[chat_id]:
-        runtime._sessions.pop(chat_id, None)
-        try:
-            await runtime.get_calls().leave_call(chat_id)
-        except Exception:
-            pass
+        await runtime.stop_chat(chat_id)
     await reply(update, "⏹️ <b>Music stopped.</b> Queue cleared and assistant left the voice chat.")
 
 
@@ -407,8 +403,7 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
             await query.answer("Loop disabled" if state["loop_remaining"] == 0 else "One repeat enabled")
         elif action == "end":
             async with runtime._chat_locks[chat_id]:
-                runtime._sessions.pop(chat_id, None)
-                await runtime.get_calls().leave_call(chat_id)
+                await runtime.stop_chat(chat_id)
             await query.answer("Music stopped")
             await query.message.reply_text("⏹️ Music stopped and assistant left the voice chat.")
     except Exception as exc:
