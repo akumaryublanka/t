@@ -99,7 +99,7 @@ The `/upload` command uses these stable rarity IDs:
 | 15 | 🎃 Halloween | 20,000 | 5 |
 | 16 | 💝 Valentine's | 25,000 | 4 |
 
-Collection value is a prestige score used by `/profile` and `/rarity`. Spawn weight is a separate relative chance: **lower weight means a rarer character**. Extreme is the lowest-weight standard tier and the highest-value tier. Event rarities (IDs 11–16) only appear during an enabled event window. The Owner Panel can customize normal-drop weights after its rarity settings are migrated to the 16-tier list; HClaim and gacha use the shared base weights.
+Collection value is a prestige score used by `/profile` and `/rarity`. Spawn weight is a separate relative chance: **lower weight means a rarer tier**. The bot chooses the rarity tier before choosing a character, so tiers with larger catalogues do not gain extra spawn probability. Extreme is the lowest-weight standard tier and the highest-value tier. Event rarities (IDs 11–16) only appear during an enabled event window in group drops. The Owner Panel can customize normal-drop weights after its rarity settings are migrated to the 16-tier list; HClaim and gacha use the same base tier weights.
 
 To add a character, reply directly to its image with:
 
