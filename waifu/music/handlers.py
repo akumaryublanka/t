@@ -256,6 +256,44 @@ async def clear_queue(update: Update, context: CallbackContext) -> None:
     await reply(update, f"🧹 Cleared <b>{removed}</b> upcoming track(s). Current track will continue.")
 
 
+async def remove_track(update: Update, context: CallbackContext) -> None:
+    if not await _require_music(update):
+        return
+    state = runtime._sessions.get(update.effective_chat.id)
+    if not state or not state.get("queue"):
+        await reply(update, "ℹ️ There are no upcoming tracks to remove.")
+        return
+    if len(context.args) != 1 or not context.args[0].isdigit():
+        await reply(update, "Usage: <code>/remove 2</code> · Use /queue to see track positions.")
+        return
+    position = int(context.args[0])
+    if not 1 <= position <= len(state["queue"]):
+        await reply(update, f"❌ Choose a queue position between 1 and {len(state['queue'])}.")
+        return
+    track = state["queue"].pop(position - 1)
+    await reply(update, f"🗑️ Removed from queue: <b>{escape(track['title'])}</b>")
+
+
+async def move_track(update: Update, context: CallbackContext) -> None:
+    if not await _require_music(update):
+        return
+    state = runtime._sessions.get(update.effective_chat.id)
+    tracks = state.get("queue", []) if state else []
+    if len(tracks) < 2:
+        await reply(update, "ℹ️ Add at least two upcoming tracks before moving a song.")
+        return
+    if len(context.args) != 2 or not all(value.isdigit() for value in context.args):
+        await reply(update, "Usage: <code>/move 3 1</code> · Moves queue item 3 to position 1.")
+        return
+    source, destination = map(int, context.args)
+    if not 1 <= source <= len(tracks) or not 1 <= destination <= len(tracks):
+        await reply(update, f"❌ Positions must be between 1 and {len(tracks)}.")
+        return
+    track = tracks.pop(source - 1)
+    tracks.insert(destination - 1, track)
+    await reply(update, f"↕️ Moved <b>{escape(track['title'])}</b> to queue position <b>{destination}</b>.")
+
+
 async def volume(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
@@ -348,6 +386,8 @@ def register_handlers() -> None:
     application.add_handler(CommandHandler("loop", loop, block=False))
     application.add_handler(CommandHandler("shuffle", shuffle, block=False))
     application.add_handler(CommandHandler("clearqueue", clear_queue, block=False))
+    application.add_handler(CommandHandler("remove", remove_track, block=False))
+    application.add_handler(CommandHandler("move", move_track, block=False))
     application.add_handler(CommandHandler("volume", volume, block=False))
     application.add_handler(
         CallbackQueryHandler(
