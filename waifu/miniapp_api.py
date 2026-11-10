@@ -2116,9 +2116,10 @@ def _sanitize_settings(category: str, incoming):
             name = str(item.get("name", "")).strip()[:80]
             if not name:
                 continue
+            raw_event_rarity = str(item.get("rarity", "")).strip()
             cleaned.append({
                 "name": name,
-                "rarity": str(item.get("rarity", "")).strip()[:60],
+                "rarity": _display_rarity(raw_event_rarity)[:60] if raw_event_rarity else "",
                 "start_at": str(item.get("start_at", "")).strip()[:40],
                 "end_at": str(item.get("end_at", "")).strip()[:40],
                 "enabled": item.get("enabled") is True,
