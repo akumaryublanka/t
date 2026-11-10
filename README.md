@@ -78,26 +78,28 @@
 
 ## 🎨 Rarity guide
 
-The /upload command uses these rarity numbers:
+The `/upload` command uses these stable rarity IDs:
 
-| Number | Rarity |
-|:---:|---|
-| 1 | ⚪ Common |
-| 2 | 🟢 Medium |
-| 3 | 🟣 Rare |
-| 4 | 🔵 Epic |
-| 5 | 🟡 Legendary |
-| 6 | 🌟 Luminous |
-| 7 | 🎐 Celestial |
-| 8 | 💮 Special Edition |
-| 9 | 🔮 Limited Edition |
-| 10 | 🔞 Extreme |
-| 11 | ❄️ Winter |
-| 12 | ☀️ Summer |
-| 13 | 🏅 Elite |
-| 14 | 🎭 Cosplay |
-| 15 | 🎃 Halloween |
-| 16 | 💝 Valentine's |
+| ID | Rarity | Collection value | Base spawn weight |
+|:---:|---|---:|---:|
+| 1 | 🌫️ Ordinary | 100 | 1,000 |
+| 2 | 🍀 Superior | 250 | 500 |
+| 3 | 🔮 Prime | 500 | 250 |
+| 4 | 🟣 Epic | 1,000 | 100 |
+| 5 | 🟡 Legendary | 2,500 | 40 |
+| 6 | 🌟 Mythic | 55,000 | 180 |
+| 7 | 💠 Celestial | 45,000 | 220 |
+| 8 | 💮 Special Edition | 35,000 | 280 |
+| 9 | 🪽 Limited Edition | 75,000 | 100 |
+| 10 | 🔞 Extreme | 100,000 | 10 |
+| 11 | ❄️ Winter | 10,000 | 1,000 |
+| 12 | ☀️ Summer | 12,000 | 800 |
+| 13 | 👑 Elite | 15,000 | 700 |
+| 14 | 🎭 Cosplay | 18,000 | 600 |
+| 15 | 🎃 Halloween | 20,000 | 500 |
+| 16 | 💝 Valentine's | 25,000 | 400 |
+
+Collection value is a prestige score used by `/profile` and `/rarity`. Spawn weight is a separate relative chance: **lower weight means a rarer character**. Extreme is the lowest-weight standard tier and the highest-value tier. Event rarities (IDs 11–16) only appear during an enabled event window. The Owner Panel can customize normal-drop weights after its rarity settings are migrated to the 16-tier list; HClaim and gacha use the shared base weights.
 
 To add a character, reply directly to its image with:
 
@@ -110,22 +112,6 @@ Use hyphens for names containing spaces. Example:
 ```text
 /upload eren-yeager attack-on-titan 13
 ```
-
-### Main rarity drop weights
-
-| Tier | Character rarity | Base drop weight |
-|:---:|---|---:|
-| ⚪ | Common | 40 |
-| 🟢 | Medium | 25 |
-| 🟣 | Rare | 20 |
-| 🔵 | Epic | 12 |
-| 🟡 | Legendary | 8 |
-| 🌟 | Luminous | 5 |
-| 🎐 | Celestial | 3 |
-| 💮 | Special Edition | 2 |
-| 🔮 | Limited Edition | 1 |
-
-Lower drop weights generally mean rarer drops. Owner-flagged special characters may have additional drop behavior. Actual results depend on the character catalogue and implementation.
 
 ## 🪙 Game economy
 
@@ -283,7 +269,7 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 | Command | What it does |
 |---|---|
 | `/daily`, `/weekly`, `/balance` | Claim daily streak rewards, weekly bonus coins and check balances |
-| `/summon [10]` | Summon characters with a Rare-or-higher pity guarantee |
+| `/summon [10]` | Summon characters with a Prime-or-higher pity guarantee |
 | `/pay amount` | Transfer Neko Coins by replying to another player |
 | `/bet`, `/dart`, `/bowl`, `/basket` | Play animated virtual-coin dice challenges |
 | `/sell`, `/market`, `/buy`, `/delist` | Marketplace actions using Neko Coins |
