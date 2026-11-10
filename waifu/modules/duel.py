@@ -26,9 +26,18 @@ _pending: dict[str, dict] = {}
 _EXPIRY = 120   # 2 minutes
 
 _RARITY_POWER = {
-    "⚪ Common": 1, "🟢 Medium": 2, "🟣 Rare": 3,
-    "🟡 Legendary": 4, "💮 Special Edition": 5,
+    label: max(1, Config.RARITY_VALUE_MAP[number] // 100)
+    for number, label in Config.RARITY_MAP.items()
 }
+
+
+def _rarity_label(value) -> str:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return Config.RARITY_MAP.get(value, Config.RARITY_MAP[1])
+    raw = str(value or Config.RARITY_MAP[1]).strip()
+    if raw.isdigit():
+        return Config.RARITY_MAP.get(int(raw), Config.RARITY_MAP[1])
+    return Config.RARITY_LEGACY_MAP.get(raw, raw)
 
 
 def _duel_id(a: int, b: int) -> str:
@@ -41,7 +50,7 @@ async def _expire(did: str) -> None:
 
 
 def _power(char: dict) -> int:
-    base  = _RARITY_POWER.get(char.get("rarity", ""), 1)
+    base = _RARITY_POWER.get(_rarity_label(char.get("rarity")), 1)
     return base * random.randint(80, 120)  # add variance
 
 
@@ -114,7 +123,7 @@ async def duel(update: Update, context: CallbackContext) -> None:
 
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton(
-            f"{c.get('rarity','🎴')} {c['name']}",
+            f"{_rarity_label(c.get('rarity'))} {c['name']}",
             callback_data=f"duel_pick_a:{did}:{i}",
         )]
         for i, c in enumerate(unique_a)
@@ -146,7 +155,7 @@ async def duel_pick_a(update: Update, context: CallbackContext) -> None:
 
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton(
-            f"{c.get('rarity','🎴')} {c['name']}",
+            f"{_rarity_label(c.get('rarity'))} {c['name']}",
             callback_data=f"duel_pick_b:{did}:{i}",
         )]
         for i, c in enumerate(state["b_chars"])
