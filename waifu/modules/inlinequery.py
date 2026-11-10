@@ -6,6 +6,7 @@ from cachetools import TTLCache
 from telegram import InlineQueryResultPhoto, Update
 from telegram.ext import CallbackContext, InlineQueryHandler
 from waifu import application, collection, db, user_collection
+from waifu.config import Config
 
 _all_cache  = TTLCache(maxsize=1,     ttl=3600)
 _user_cache = TTLCache(maxsize=10000, ttl=60)
@@ -20,6 +21,16 @@ async def create_indexes() -> None:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _display_rarity(value) -> str:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return Config.RARITY_MAP.get(value, Config.RARITY_MAP[1])
+    raw = str(value or Config.RARITY_MAP[1]).strip()
+    if raw.isdigit():
+        return Config.RARITY_MAP.get(int(raw), Config.RARITY_MAP[1])
+    return Config.RARITY_LEGACY_MAP.get(raw, raw)
+
+
 
 async def _resolve_url(img: str, char_id: str, bot) -> str | None:
     """Return the branded proxy URL used by inline gallery results."""
@@ -148,7 +159,7 @@ async def inlinequery(update: Update, context: CallbackContext) -> None:
                 f"<b><a href='tg://user?id={uid}'>{uname}</a>'s Character</b>\n\n"
                 f"🌸 <b>{name}</b> (×{u_cnt})\n"
                 f"📺 <b>{anime}</b> ({u_an}/{db_an})\n"
-                f"💎 {c.get('rarity', '')}\n"
+                f"💎 {_display_rarity(c.get('rarity'))}\n"
                 f"🆔 {c['id']}"
             )
         else:
@@ -156,7 +167,7 @@ async def inlinequery(update: Update, context: CallbackContext) -> None:
             cap = (
                 f"🌸 <b>{name}</b>\n\n"
                 f"📺 {anime}\n"
-                f"💎 {c.get('rarity', '')}\n"
+                f"💎 {_display_rarity(c.get('rarity'))}\n"
                 f"🆔 {c['id']}\n\n"
                 f"Guessed globally <b>{gc}</b> time{'s' if gc != 1 else ''}."
             )
