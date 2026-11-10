@@ -1,0 +1,14 @@
+# Local environment secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Pyrogram local session files (sensitive)
+*.session
+*.session-journal
