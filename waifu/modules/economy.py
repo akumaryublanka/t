@@ -14,6 +14,18 @@ from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler
 from waifu import application, user_collection, market_collection, db
 from waifu.config import Config
 
+def _rarity_label(value) -> str:
+    if isinstance(value, int) and not isinstance(value, bool):
+        number = value if value in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(value, 1)
+        return Config.RARITY_MAP.get(number, Config.RARITY_MAP[1])
+    raw = str(value or Config.RARITY_MAP[1]).strip()
+    if raw.isdigit():
+        number = int(raw)
+        number = number if number in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(number, 1)
+        return Config.RARITY_MAP.get(number, Config.RARITY_MAP[1])
+    return Config.RARITY_LEGACY_MAP.get(raw, raw)
+
+
 _DAILY_COOLDOWN = 86_400   # 24 hours in seconds
 _PAGE = 8
 
@@ -218,7 +230,7 @@ async def sell(update: Update, context: CallbackContext) -> None:
         "seller_id":   u.id,
         "seller_name": u.first_name,
         "char_id":     char_id,
-        "char":        char,
+        "char":        {**char, "rarity": _rarity_label(char.get("rarity"))},
         "price":       price,
         "listed_at":   time.time(),
     }
@@ -256,7 +268,7 @@ async def market(update: Update, context: CallbackContext, page: int = 0) -> Non
     for lst in listings:
         char  = lst["char"]
         lines.append(
-            f"{char.get('rarity','🎴')}  <b>{escape(char['name'])}</b>  "
+            f"{_rarity_label(char.get('rarity'))}  <b>{escape(char['name'])}</b>  "
             f"— <b>{lst['price']:,} 🟡</b>\n"
             f"   Seller: {escape(lst['seller_name'])}  |  "
             f"<code>/buy {lst['_id']}</code>"
@@ -292,7 +304,7 @@ async def market_page_cb(update: Update, context: CallbackContext) -> None:
     for lst in listings:
         char = lst["char"]
         lines.append(
-            f"{char.get('rarity','🎴')}  <b>{escape(char['name'])}</b>  "
+            f"{_rarity_label(char.get('rarity'))}  <b>{escape(char['name'])}</b>  "
             f"— <b>{lst['price']:,} 🟡</b>\n"
             f"   Seller: {escape(lst['seller_name'])}  |  "
             f"<code>/buy {lst['_id']}</code>"
@@ -356,9 +368,10 @@ async def buy(update: Update, context: CallbackContext) -> None:
 
     # Atomic exchange from the buyer's balance; the listing is removed only
     # after the balance update succeeds.
+    purchased_char = {**listing["char"], "rarity": _rarity_label(listing["char"].get("rarity"))}
     debit = await user_collection.update_one(
         {"id": u.id, "coins": {"$gte": int(listing["price"])}},
-        {"$inc": {"coins": -int(listing["price"])}, "$push": {"characters": listing["char"]}},
+        {"$inc": {"coins": -int(listing["price"])}, "$push": {"characters": purchased_char}},
     )
     if not debit.modified_count:
         await update.message.reply_text("❌ Your balance changed; please try buying again.")
@@ -367,7 +380,7 @@ async def buy(update: Update, context: CallbackContext) -> None:
         await user_collection.update_one({"id": listing["seller_id"]}, {"$inc": {"coins": seller_payout}})
     await market_collection.delete_one({"_id": oid})
 
-    char = listing["char"]
+    char = purchased_char
     await update.message.reply_text(
         f"✅ You bought <b>{escape(char['name'])}</b> for <b>{listing['price']:,} 🟡 Neko Coins</b>!\\n"
         f"Seller received <b>{seller_payout:,}</b> Neko Coins (market fee: {fee:,}).",
@@ -402,8 +415,9 @@ async def delist(update: Update, context: CallbackContext) -> None:
         return
 
     await market_collection.delete_one({"_id": oid})
+    returned_char = {**listing["char"], "rarity": _rarity_label(listing["char"].get("rarity"))}
     await user_collection.update_one(
-        {"id": u.id}, {"$push": {"characters": listing["char"]}})
+        {"id": u.id}, {"$push": {"characters": returned_char}})
     await update.message.reply_text("✅ Listing removed. Character returned to your harem.")
 
 
