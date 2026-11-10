@@ -102,10 +102,13 @@ async def notify_wishlist_match(bot, char: dict) -> None:
     char_id = str(char.get("id", ""))
     if not char_id:
         return
-    users = await user_collection.find(
-        {"wishlist": char_id, "characters.id": {"$ne": char_id}},
-        {"id": 1, "first_name": 1},
-    ).limit(50).to_list(length=50)
+    try:
+        users = await user_collection.find(
+            {"wishlist": char_id, "characters.id": {"$ne": char_id}},
+            {"id": 1, "first_name": 1},
+        ).limit(50).to_list(length=50)
+    except Exception:
+        return
     text = (
         "🔔 <b>WISHLIST ALERT — MIKASAVERSE</b>\n\n"
         f"⭐ <b>{escape(str(char.get('name', 'Unknown')))}</b>\n"
