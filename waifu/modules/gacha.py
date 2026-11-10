@@ -139,7 +139,7 @@ async def summon(update: Update, context: CallbackContext) -> None:
         raise
 
     lines = []
-    best = max(pulls, key=lambda c: _rarity_number(c.get("rarity", 1)))
+    best = max(pulls, key=lambda c: Config.RARITY_VALUE_MAP[_rarity_number(c.get("rarity", 1))])
     for index, char in enumerate(pulls, 1):
         rarity = Config.RARITY_MAP[_rarity_number(char.get("rarity", 1))]
         duplicate = "  ↳ <i>Duplicate</i>" if str(char.get("id")) in old_ids else ""
