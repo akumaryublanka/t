@@ -19,13 +19,13 @@ def _new_state() -> dict:
 
 def _playing_text(track: dict, queued: int = 0) -> str:
     text = (
-        "🎶 <b>MIKASAVERSE · NOW PLAYING</b>\\n"
-        f"🎧 {escape(track['title'])}\\n"
-        f"⏱️ {duration(track.get('duration'))}\\n"
+        "🎶 <b>MIKASAVERSE · NOW PLAYING</b>\n"
+        f"🎧 {escape(track['title'])}\n"
+        f"⏱️ {duration(track.get('duration'))}\n"
         f"👤 Requested by {escape(track.get('requested_by', 'Unknown'))}"
     )
     if queued:
-        text += f"\\n\\n➕ Added <b>{queued}</b> more track(s) to the queue."
+        text += f"\n\n➕ Added <b>{queued}</b> more track(s) to the queue."
     return text
 
 
@@ -69,7 +69,7 @@ async def _add_tracks(update: Update, tracks: list[dict]) -> None:
                 track_text = f"🎵 Added <b>{len(tracks)}</b> playlist tracks"
             await reply(
                 update,
-                f"➕ <b>Added to queue</b>\\n{track_text}\\n"
+                f"➕ <b>Added to queue</b>\n{track_text}\n"
                 f"📍 Starting position: <b>{position}</b>",
             )
 
@@ -100,20 +100,20 @@ async def play(update: Update, context: CallbackContext) -> None:
         if "noactivegroupcall" in error_name or "no active group call" in error_text:
             await reply(
                 update,
-                "🎙️ <b>Voice Chat abhi OFF hai!</b>\\n"
+                "🎙️ <b>Voice Chat abhi OFF hai!</b>\n"
                 "Pehle group mein Voice Chat ON karo, phir <code>/play</code> dobara bhejo. "
                 "Assistant khud join karke music play karega.",
             )
         elif any(marker in error_text for marker in ("sign in to confirm", "cookies", "youtube")):
             await reply(
                 update,
-                "⚠️ <b>YouTube ne anonymous playback block kar diya.</b>\\n"
+                "⚠️ <b>YouTube ne anonymous playback block kar diya.</b>\n"
                 "Cookies ke bina doosra song title ya SoundCloud link try karo.",
             )
         else:
             await reply(
                 update,
-                "❌ <b>Music playback start nahi ho paya.</b>\\n"
+                "❌ <b>Music playback start nahi ho paya.</b>\n"
                 f"<code>{escape(str(exc)[:240])}</code>",
             )
 
@@ -185,7 +185,7 @@ async def queue(update: Update, context: CallbackContext) -> None:
         )
     if len(state["queue"]) > 15:
         lines.append(f"…and {len(state['queue']) - 15} more track(s)")
-    await reply(update, "\\n".join(lines), reply_markup=player_keyboard(update.effective_chat.id, paused=state.get("paused", False)))
+    await reply(update, "\n".join(lines), reply_markup=player_keyboard(update.effective_chat.id, paused=state.get("paused", False)))
 
 
 async def current(update: Update, context: CallbackContext) -> None:
@@ -297,7 +297,7 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
         lines = ["🎶 <b>MIKASAVERSE QUEUE</b>", "", f"▶️ {escape(state['current']['title'])}"]
         for index, track in enumerate(state["queue"][:15], start=1):
             lines.append(f"{index}. {escape(track['title'])}")
-        await query.message.reply_text("\\n".join(lines), parse_mode="HTML")
+        await query.message.reply_text("\n".join(lines), parse_mode="HTML")
         await query.answer()
         return
     if not state or not state.get("current") or runtime.get_calls() is None:
@@ -352,7 +352,7 @@ def register_handlers() -> None:
     application.add_handler(
         CallbackQueryHandler(
             music_controls,
-            pattern=r"^mv:(pause|resume|skip|replay|end|queue|loop):(-?\\d+)$",
+            pattern=r"^mv:(pause|resume|skip|replay|end|queue|loop):(-?\d+)$",
             block=False,
         )
     )

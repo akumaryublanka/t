@@ -33,7 +33,7 @@ def get_calls() -> PyTgCalls | None:
 def unavailable_message() -> str:
     if _startup_status == "missing_credentials":
         return (
-            "⚙️ <b>Music assistant is not configured yet.</b>\\n"
+            "⚙️ <b>Music assistant is not configured yet.</b>\n"
             "The owner must add <code>MUSIC_API_ID</code>, "
             "<code>MUSIC_API_HASH</code> and <code>MUSIC_SESSION_STRING</code> "
             "to Render Environment."
@@ -188,8 +188,8 @@ async def _advance_queue(
                     if announce:
                         await _send_chat_message(
                             chat_id,
-                            f"🔁 <b>REPEATING TRACK</b>\\n"
-                            f"🎵 {escape(current['title'])}\\n"
+                            f"🔁 <b>REPEATING TRACK</b>\n"
+                            f"🎵 {escape(current['title'])}\n"
                             f"⏱️ {duration(current.get('duration'))}",
                             reply_markup=player_keyboard(chat_id),
                         )
@@ -204,8 +204,8 @@ async def _advance_queue(
                 if announce:
                     await _send_chat_message(
                         chat_id,
-                        f"⏭️ <b>NOW PLAYING</b>\\n"
-                        f"🎵 {escape(next_track['title'])}\\n"
+                        f"⏭️ <b>NOW PLAYING</b>\n"
+                        f"🎵 {escape(next_track['title'])}\n"
                         f"⏱️ {duration(next_track.get('duration'))}",
                         reply_markup=player_keyboard(chat_id),
                     )
