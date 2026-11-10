@@ -2,15 +2,20 @@
 
 import asyncio
 import random
+import shutil
+from datetime import datetime, timezone
 from html import escape
 
 from telegram import Update
 from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler
 
-from waifu import application
+from waifu import application, db
 from waifu.music import runtime
-from waifu.music.downloader import extract_info_sync, extract_playlist_sync
+from waifu.music.downloader import download_audio_sync, extract_info_sync, extract_playlist_sync
 from waifu.music.formatting import duration, group_only, player_keyboard, reply
+
+
+music_favorites = db["music_favorites"]
 
 
 def _new_state() -> dict:
@@ -27,6 +32,33 @@ def _playing_text(track: dict, queued: int = 0) -> str:
     if queued:
         text += f"\n\n➕ Added <b>{queued}</b> more track(s) to the queue."
     return text
+
+
+async def _get_favorites(user_id: int) -> list[dict]:
+    cursor = music_favorites.find({"user_id": user_id}).sort("created_at", -1).limit(25)
+    return [item async for item in cursor]
+
+
+async def _save_favorite(user_id: int, track: dict) -> bool:
+    await music_favorites.create_index(
+        [("user_id", 1), ("source", 1)],
+        unique=True,
+        name="music_favorites_user_source",
+    )
+    result = await music_favorites.update_one(
+        {"user_id": user_id, "source": track["source"]},
+        {
+            "$setOnInsert": {
+                "user_id": user_id,
+                "source": track["source"],
+                "title": track.get("title", "Unknown track"),
+                "duration": track.get("duration"),
+                "created_at": datetime.now(timezone.utc),
+            }
+        },
+        upsert=True,
+    )
+    return result.upserted_id is not None
 
 
 async def _require_music(update: Update) -> bool:
@@ -338,6 +370,17 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
         await query.message.reply_text("\n".join(lines), parse_mode="HTML")
         await query.answer()
         return
+    if action == "fav":
+        if not state or not state.get("current"):
+            await query.answer("Nothing is playing.", show_alert=True)
+            return
+        try:
+            added = await _save_favorite(query.from_user.id, state["current"])
+            await query.answer("Added to favourites ❤️" if added else "Already in favourites ❤️", show_alert=True)
+        except Exception:
+            runtime.LOGGER.exception("Inline favorite save failed")
+            await query.answer("Could not save favourite.", show_alert=True)
+        return
     if not state or not state.get("current") or runtime.get_calls() is None:
         await query.answer("Nothing is playing.", show_alert=True)
         return
@@ -373,6 +416,133 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
         await query.answer(f"Action failed: {str(exc)[:120]}", show_alert=True)
 
 
+async def song_download(update: Update, context: CallbackContext) -> None:
+    query = " ".join(context.args).strip()
+    if not query:
+        await reply(update, "Usage: <code>/song song name or link</code>")
+        return
+    status = await update.effective_message.reply_text(
+        "⬇️ <b>Preparing your audio download…</b>", parse_mode="HTML"
+    )
+    downloaded = None
+    try:
+        downloaded = await asyncio.to_thread(download_audio_sync, query)
+        caption = (
+            f"🎵 <b>{escape(downloaded['title'])}</b>\n"
+            f"⏱️ {duration(downloaded.get('duration'))}\n"
+            "🌸 <i>Downloaded by MikasaVerse</i>"
+        )
+        with open(downloaded["path"], "rb") as audio:
+            await update.effective_message.reply_audio(
+                audio=audio,
+                title=downloaded["title"][:64],
+                performer=(downloaded.get("uploader") or "Unknown")[:64],
+                caption=caption,
+                parse_mode="HTML",
+            )
+        await status.delete()
+    except Exception as exc:
+        runtime.LOGGER.warning("Song download failed: %s", exc)
+        await status.edit_text(
+            "❌ <b>Download failed.</b>\n"
+            f"<code>{escape(str(exc)[:260])}</code>",
+            parse_mode="HTML",
+        )
+    finally:
+        if downloaded:
+            await asyncio.to_thread(shutil.rmtree, downloaded["temp_dir"], True)
+
+
+async def favorite(update: Update, context: CallbackContext) -> None:
+    if not await _require_music(update):
+        return
+    user = update.effective_user
+    state = runtime._sessions.get(update.effective_chat.id)
+    track = state.get("current") if state else None
+    if not user or not track:
+        await reply(update, "ℹ️ There is no current track to save.")
+        return
+    try:
+        added = await _save_favorite(user.id, track)
+        await reply(
+            update,
+            "❤️ Added the current track to your favourites."
+            if added else "❤️ This track is already in your favourites.",
+        )
+    except Exception:
+        runtime.LOGGER.exception("Could not save music favorite for %s", user.id)
+        await reply(update, "❌ Couldn't save this favourite right now.")
+
+
+async def favs(update: Update, context: CallbackContext) -> None:
+    user = update.effective_user
+    if not user:
+        await reply(update, "Open favourites from your Telegram account.")
+        return
+    tracks = await _get_favorites(user.id)
+    if not tracks:
+        await reply(update, "❤️ You haven't saved any music favourites yet. Play a track and use /favorite.")
+        return
+    lines = ["❤️ <b>YOUR MUSIC FAVOURITES</b>", ""]
+    for index, track in enumerate(tracks[:20], start=1):
+        lines.append(
+            f"{index}. {escape(track.get('title', 'Unknown track'))} "
+            f"<i>({duration(track.get('duration'))})</i>"
+        )
+    lines += [
+        "",
+        "▶️ <code>/playfav number</code> to play one",
+        "🗑️ <code>/delfav number</code> to remove one",
+    ]
+    if len(tracks) > 20:
+        lines.append("Showing your latest 20 saved tracks.")
+    await reply(update, "\n".join(lines))
+
+
+async def play_favorite(update: Update, context: CallbackContext) -> None:
+    if not await _require_music(update):
+        return
+    if len(context.args) != 1 or not context.args[0].isdigit():
+        await reply(update, "Usage: <code>/playfav number</code> · see /favs")
+        return
+    index = int(context.args[0])
+    tracks = await _get_favorites(update.effective_user.id)
+    if not 1 <= index <= len(tracks):
+        await reply(update, "❌ Favourite number not found. Check /favs.")
+        return
+    track = tracks[index - 1]
+    await _add_tracks(
+        update,
+        [{
+            "source": track["source"],
+            "title": track.get("title") or "Unknown track",
+            "duration": track.get("duration"),
+        }],
+    )
+
+
+async def delete_favorite(update: Update, context: CallbackContext) -> None:
+    user = update.effective_user
+    if not user:
+        return
+    if len(context.args) != 1 or not context.args[0].isdigit():
+        await reply(update, "Usage: <code>/delfav number</code> · see /favs")
+        return
+    index = int(context.args[0])
+    tracks = await _get_favorites(user.id)
+    if not 1 <= index <= len(tracks):
+        await reply(update, "❌ Favourite number not found. Check /favs.")
+        return
+    result = await music_favorites.delete_one(
+        {"_id": tracks[index - 1]["_id"], "user_id": user.id}
+    )
+    await reply(
+        update,
+        "🗑️ Favourite removed." if result.deleted_count else "❌ Favourite was not found.",
+    )
+
+
+
 def register_handlers() -> None:
     application.add_handler(CommandHandler("play", play, block=False))
     application.add_handler(CommandHandler("pause", pause, block=False))
@@ -389,10 +559,16 @@ def register_handlers() -> None:
     application.add_handler(CommandHandler("remove", remove_track, block=False))
     application.add_handler(CommandHandler("move", move_track, block=False))
     application.add_handler(CommandHandler("volume", volume, block=False))
+    application.add_handler(CommandHandler("song", song_download, block=False))
+    application.add_handler(CommandHandler("favorite", favorite, block=False))
+    application.add_handler(CommandHandler("favs", favs, block=False))
+    application.add_handler(CommandHandler("favorites", favs, block=False))
+    application.add_handler(CommandHandler("playfav", play_favorite, block=False))
+    application.add_handler(CommandHandler("delfav", delete_favorite, block=False))
     application.add_handler(
         CallbackQueryHandler(
             music_controls,
-            pattern=r"^mv:(pause|resume|skip|replay|end|queue|loop):(-?\d+)$",
+            pattern=r"^mv:(pause|resume|skip|replay|end|queue|loop|fav):(-?\d+)$",
             block=False,
         )
     )
