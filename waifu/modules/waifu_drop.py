@@ -270,7 +270,10 @@ async def _pick_character(all_chars: list, sent: list) -> dict:
             if name:
                 custom_weights[name] = weight
 
-    weighted_pool = []
+    # Select the rarity tier first, then a character within that tier. This keeps
+    # tier odds stable even when one rarity has far more catalogue entries.
+    chars_by_rarity: dict[str, list[tuple[dict, float]]] = {}
+    tier_weights: dict[str, float] = {}
     for char in unsent:
         raw_rarity = char.get("rarity", Config.RARITY_MAP[1])
         rarity = _rarity_label(raw_rarity)
@@ -289,23 +292,34 @@ async def _pick_character(all_chars: list, sent: list) -> dict:
             if event_match is None:
                 weight = 0
 
-        # Zero-weight tiers stay disabled, including specially flagged characters.
+        if weight <= 0:
+            continue
+
+        character_weight = 1.0
         if char.get("id") in special_ids:
-            if weight > 0:
-                # Keep special characters rare while preserving the underlying
-                # rarity order (especially the ultra-rare Extreme tier).
-                weight *= _SPECIAL_WEIGHT_MULTIPLIER
-                char = {**char, "is_special": True}
-        if weight > 0:
-            weighted_pool.append((char, weight))
+            # Special characters get a separate ultra-rare chance within their
+            # own tier; this no longer overrides the rarity-tier probability.
+            character_weight = _SPECIAL_WEIGHT_MULTIPLIER
+            char = {**char, "is_special": True}
+
+        chars_by_rarity.setdefault(rarity, []).append((char, character_weight))
+        tier_weights[rarity] = weight
 
     # Never bypass a disabled rarity or inactive event with an unweighted fallback.
-    if not weighted_pool:
+    if not chars_by_rarity:
         LOGGER.info("No eligible characters for the active rarity/event settings; skipping drop")
         return {}
-    chars = [c for c, _ in weighted_pool]
-    weights = [w for _, w in weighted_pool]
-    return random.choices(chars, weights=weights, k=1)[0]
+
+    available_rarities = list(chars_by_rarity)
+    selected_rarity = random.choices(
+        available_rarities,
+        weights=[tier_weights[rarity] for rarity in available_rarities],
+        k=1,
+    )[0]
+    tier_characters = chars_by_rarity[selected_rarity]
+    chars = [char for char, _ in tier_characters]
+    character_weights = [weight for _, weight in tier_characters]
+    return random.choices(chars, weights=character_weights, k=1)[0]
 
 
 async def _expire_drop(
