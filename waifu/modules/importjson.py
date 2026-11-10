@@ -78,7 +78,9 @@ async def import_json(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rarity_text = str(raw_rarity).strip()
             rarity = Config.RARITY_LEGACY_MAP.get(rarity_text, rarity_text)
             if rarity_text.isdigit():
-                rarity = Config.RARITY_MAP.get(int(rarity_text), Config.RARITY_MAP[1])
+                number = int(rarity_text)
+                number = number if number in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(number, 1)
+                rarity = Config.RARITY_MAP.get(number, Config.RARITY_MAP[1])
 
             if not image or not name:
                 failed += 1
