@@ -14,6 +14,15 @@ from waifu import collection as anime_collection
 from waifu.config import Config
 
 
+def _rarity_label(value) -> str:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return Config.RARITY_MAP.get(value, Config.RARITY_MAP[1])
+    raw = str(value or Config.RARITY_MAP[1]).strip()
+    if raw.isdigit():
+        return Config.RARITY_MAP.get(int(raw), Config.RARITY_MAP[1])
+    return Config.RARITY_LEGACY_MAP.get(raw, raw)
+
+
 async def check(update: Update, context: CallbackContext) -> None:
     if not context.args:
         await update.message.reply_text(
@@ -43,7 +52,7 @@ async def check(update: Update, context: CallbackContext) -> None:
         f"🎴 <b>Character Info</b>\n\n"
         f"🌸 <b>Name:</b> {escape(char['name'])}\n"
         f"📺 <b>Anime:</b> {escape(char['anime'])}\n"
-        f"💎 <b>Rarity:</b> {Config.RARITY_LEGACY_MAP.get(str(char.get('rarity', '')), char.get('rarity', Config.RARITY_MAP[1]))}\n"
+        f"💎 <b>Rarity:</b> {_rarity_label(char.get('rarity'))}\n"
         f"🆔 <b>ID:</b> <code>{escape(char['id'])}</code>"
     )
 
