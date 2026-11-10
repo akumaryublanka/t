@@ -523,7 +523,7 @@ async def api_admin_store_characters(request: web.Request) -> web.Response:
         body = await request.json()
         name = str(body.get("name", "")).strip()[:100]
         anime = str(body.get("anime", "")).strip()[:100]
-        rarity = str(body.get("rarity", "⚪ Common")).strip()[:80]
+        rarity = _display_rarity(body.get("rarity", Config.RARITY_MAP[1]))
         image_ref = str(body.get("img_url", "")).strip()[:2000]
         price = int(body.get("price", 0))
         currency = str(body.get("currency", "coins"))
@@ -576,7 +576,7 @@ async def api_admin_store_character(request: web.Request) -> web.Response:
         updates = {}
         for field, limit in (("name", 100), ("anime", 100), ("rarity", 80), ("img_url", 2000)):
             if field in body:
-                value = str(body[field]).strip()[:limit]
+                value = _display_rarity(body[field]) if field == "rarity" else str(body[field]).strip()[:limit]
                 if field in {"name", "anime"} and not value:
                     raise ValueError(f"{field} cannot be empty.")
                 if field == "img_url" and value.startswith("//"):
@@ -624,31 +624,20 @@ def _normalize_game_answer(value: object) -> str:
 
 
 def _rarity_rank_lookup(settings: dict) -> dict[str, int]:
-    rarities = settings.get("rarities", [])
-    rank = {}
-    main_index = 0
-    event_index = 0
-    for item in rarities if isinstance(rarities, list) else []:
-        if not isinstance(item, dict):
-            continue
-        name = _normalize_game_answer(item.get("name", ""))
-        if not name:
-            continue
-        if item.get("kind") == "event":
-            rank[name] = 1000 + event_index
-            event_index += 1
-        else:
-            rank[name] = main_index
-            main_index += 1
+    # Rarity duels compare the same prestige values shown in /profile and /rarity.
+    rank = {
+        _normalize_game_answer(label): Config.RARITY_VALUE_MAP[number]
+        for number, label in Config.RARITY_MAP.items()
+    }
+    for old_label, canonical in Config.RARITY_LEGACY_MAP.items():
+        canonical_key = _normalize_game_answer(canonical)
+        if canonical_key in rank:
+            rank[_normalize_game_answer(old_label)] = rank[canonical_key]
     return rank
 
 
 def _character_rarity_rank(char: dict, rank_lookup: dict[str, int]) -> int:
-    raw = str(char.get("rarity", "") or "Common")
-    normalized = _normalize_game_answer(raw)
-    for name, rank in rank_lookup.items():
-        if normalized.endswith(name):
-            return rank
+    normalized = _normalize_game_answer(_display_rarity(char.get("rarity")))
     return rank_lookup.get(normalized, 0)
 
 
@@ -738,7 +727,7 @@ async def api_rarity_duel_answer(request: web.Request) -> web.Response:
             upsert=True,
         )
     rank_lookup = _rarity_rank_lookup(await _get_admin_settings())
-    rarities = [str(char.get("rarity", "") or "Common") for char in session["cards"]]
+    rarities = [_display_rarity(char.get("rarity")) for char in session["cards"]]
     return web.json_response({
         "correct": correct, "correct_index": session["correct_index"], "rarities": rarities,
         "coins_earned": earned, "xp_earned": xp,
@@ -1462,7 +1451,7 @@ async def api_admin_export(request: web.Request) -> web.Response:
         **{key: row.get(key) for key in ("id", "username", "first_name", "coins", "xp", "wins", "miniapp_suspended")},
         "characters": [{
             "id": str(char.get("id", "")), "name": str(char.get("name", "Unknown")),
-            "anime": str(char.get("anime", "Unknown")), "rarity": str(char.get("rarity", "Character")),
+            "anime": str(char.get("anime", "Unknown")), "rarity": _display_rarity(char.get("rarity")),
             "img_url": str(char.get("img_url", "") or ""),
         } for char in (row.get("characters", []) or []) if isinstance(char, dict)][:5000],
     } for row in users]
@@ -1475,7 +1464,7 @@ async def api_admin_export(request: web.Request) -> web.Response:
             "id": str((row.get("char") or {}).get("id", "")),
             "name": str((row.get("char") or {}).get("name", "Unknown")),
             "anime": str((row.get("char") or {}).get("anime", "Unknown")),
-            "rarity": str((row.get("char") or {}).get("rarity", "Character")),
+            "rarity": _display_rarity((row.get("char") or {}).get("rarity")),
             "img_url": str((row.get("char") or {}).get("img_url", "") or ""),
         },
     } for row in listings]
@@ -1633,7 +1622,7 @@ async def api_admin_restore(request: web.Request) -> web.Response:
             if not char_id or not name or not anime:
                 continue
             data = {"name": name, "anime": anime,
-                    "rarity": str(row.get("rarity", "⚪ Common")).strip()[:80],
+                    "rarity": _display_rarity(row.get("rarity", Config.RARITY_MAP[1])),
                     "img_url": str(row.get("img_url", "")).strip()[:2000]}
             query = {"id": char_id}
             if char_id.isdigit():
@@ -1684,7 +1673,7 @@ async def api_admin_restore(request: web.Request) -> web.Response:
                 "id": str(char.get("id", ""))[:32],
                 "name": str(char.get("name", "Unknown"))[:100],
                 "anime": str(char.get("anime", "Unknown"))[:100],
-                "rarity": str(char.get("rarity", "Character"))[:80],
+                "rarity": _display_rarity(char.get("rarity"))[:80],
                 "img_url": str(char.get("img_url", "") or "")[:2000],
             }
             listing_doc = {
@@ -2366,7 +2355,7 @@ async def api_admin_character_create(request: web.Request) -> web.Response:
         body = await request.json()
         name = str(body.get("name", "")).strip()[:100]
         anime = str(body.get("anime", "")).strip()[:100]
-        rarity = str(body.get("rarity", "⚪ Common")).strip()[:80]
+        rarity = _display_rarity(body.get("rarity", Config.RARITY_MAP[1]))
         image_ref = str(body.get("img_url", "")).strip()[:2000]
         requested_id = str(body.get("id", "")).strip()[:32]
         message_id = int(body.get("message_id", 0) or 0)
@@ -2419,7 +2408,7 @@ async def api_admin_character_update(request: web.Request) -> web.Response:
     updates = {}
     for field, limit in (("name", 100), ("anime", 100), ("rarity", 80), ("img_url", 2000)):
         if field in body:
-            value = str(body[field]).strip()[:limit]
+            value = _display_rarity(body[field]) if field == "rarity" else str(body[field]).strip()[:limit]
             if field in ("name", "anime") and not value:
                 raise web.HTTPBadRequest(text=json.dumps({"error": f"{field} cannot be empty."}), content_type="application/json")
             if field == "img_url" and value.startswith("//"):
