@@ -273,6 +273,8 @@ async def _pick_character(all_chars: list, sent: list) -> dict:
     for char in unsent:
         raw_rarity = char.get("rarity", Config.RARITY_MAP[1])
         rarity = _rarity_label(raw_rarity)
+        if char.get("rarity") != rarity:
+            char = {**char, "rarity": rarity}
         lookup_keys = set()
         lookup_keys.update(_rarity_keys(str(raw_rarity)))
         lookup_keys.update(_rarity_keys(rarity))
