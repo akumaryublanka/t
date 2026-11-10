@@ -84,7 +84,7 @@ class Config:
         16: 25_000,
     }
 
-    # Per-character spawn weights: lower weight means a rarer drop.
+    # Per-tier spawn weights: lower weight means a rarer drop.
     # Extreme is intentionally the hardest rarity to obtain.
     RARITY_WEIGHT_MAP: dict[int, float] = {
         1: 1_000,
@@ -103,6 +103,11 @@ class Config:
         14: 6,
         15: 5,
         16: 4,
+    }
+
+    # Numeric IDs used by the older event-rarity schema.
+    RARITY_LEGACY_NUMBER_MAP: dict[int, int] = {
+        26: 11, 27: 12, 28: 13, 29: 14, 30: 15, 31: 16,
     }
 
     # Old database labels are normalized to their new display labels.
