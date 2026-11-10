@@ -104,6 +104,8 @@ BOT_COMMANDS = [
     BotCommand("loop", "🔂 Repeat the current track 0-10 times"),
     BotCommand("shuffle", "🔀 Shuffle upcoming tracks"),
     BotCommand("clearqueue", "🧹 Clear upcoming tracks"),
+    BotCommand("remove", "🗑️ Remove a queued track by position"),
+    BotCommand("move", "↕️ Move a queued track to another position"),
     BotCommand("volume", "🔊 Change music volume"),
     BotCommand("song", "⬇️ Download a song as audio"),
     BotCommand("favorite", "❤️ Save the current music track"),
