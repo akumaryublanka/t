@@ -16,10 +16,12 @@ _PITY_LIMIT = 10
 
 def _rarity_number(value) -> int:
     if isinstance(value, int) and not isinstance(value, bool):
-        return value if value in Config.RARITY_MAP else 1
+        return value if value in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(value, 1)
     text = str(value or "").strip()
     if text.isdigit():
-        return int(text) if int(text) in Config.RARITY_MAP else 1
+        number = int(text)
+        number = number if number in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(number, 1)
+        return number
     for number, label in Config.RARITY_MAP.items():
         if text == label:
             return number
