@@ -274,11 +274,6 @@ async def start_music() -> None:
     except Exception:
         _startup_status = "startup_failed"
         LOGGER.exception("Could not start the MikasaVerse music assistant.")
-        if _calls is not None:
-            try:
-                await _calls.stop()
-            except Exception:
-                pass
         if _music_client is not None:
             try:
                 await _music_client.stop()
@@ -305,11 +300,7 @@ async def stop_music() -> None:
     _sessions.clear()
     _resolved_chat_peers.clear()
 
-    if _calls is not None:
-        try:
-            await _calls.stop()
-        except Exception:
-            LOGGER.exception("Error while stopping PyTgCalls.")
+    # PyTgCalls 2.3.x has no public stop() method; active calls were left above.
     if _music_client is not None:
         try:
             await _music_client.stop()
