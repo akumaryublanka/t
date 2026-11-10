@@ -86,3 +86,48 @@ def stream_url_sync(source: str) -> str:
         if not url:
             raise ValueError("Could not refresh the audio stream URL.")
         return url
+
+
+
+def extract_playlist_sync(query: str, max_tracks: int = 20) -> list[dict]:
+    """Return a bounded list of flat playlist entries without downloading media."""
+    if not 1 <= max_tracks <= 50:
+        raise ValueError("Playlist limit must be between 1 and 50.")
+
+    options = {
+        **_youtube_options(),
+        "noplaylist": False,
+        "extract_flat": "in_playlist",
+        "playlistend": max_tracks,
+        "ignoreerrors": True,
+    }
+    with YoutubeDL(options) as ydl:
+        info = ydl.extract_info(query, download=False)
+
+    if not info or not info.get("entries"):
+        return []
+
+    tracks = []
+    seen = set()
+    for entry in info["entries"]:
+        if not entry:
+            continue
+        video_id = entry.get("id")
+        source = entry.get("webpage_url") or entry.get("url")
+        if source and not str(source).startswith(("http://", "https://")):
+            source = None
+        if not source and video_id:
+            source = f"https://www.youtube.com/watch?v={video_id}"
+        if not source or source in seen:
+            continue
+        seen.add(source)
+        tracks.append(
+            {
+                "source": source,
+                "title": entry.get("title") or "Unknown track",
+                "duration": int(entry["duration"]) if entry.get("duration") else None,
+            }
+        )
+        if len(tracks) >= max_tracks:
+            break
+    return tracks

@@ -67,7 +67,7 @@
   <tr>
     <td width="50%">
       <h3>🎵 Voice Chat Music</h3>
-      Play or queue songs in group voice chats, pause/resume, skip tracks, control volume, and automatically leave when the queue ends.
+      Playlist-aware voice-chat playback, interactive player buttons, queue shuffle/clear, repeat/replay, pause/resume, skip, volume control, and automatic leave when playback ends.
     </td>
     <td width="50%">
       <h3>🌸 MikasaVerse</h3>
@@ -212,7 +212,7 @@ The music player uses PyTgCalls with a separate Telegram **user account** as its
 1. Create Telegram API credentials at [my.telegram.org](https://my.telegram.org).
 2. Generate a Pyrogram session string for a dedicated Telegram user account on a trusted device.
 3. Add `MUSIC_API_ID`, `MUSIC_API_HASH`, and `MUSIC_SESSION_STRING` to the Render service Environment as secret values.
-4. Add that assistant account to the same group and grant it permission to manage video chats.
+4. Add the assistant account to the same group. The main MikasaVerse bot needs **Invite Users** permission to create a temporary invite link; the assistant itself does not need admin rights.
 5. Restart/redeploy the service after setting the variables.
 
 **Never post your session string in chat, commit it to GitHub, or share it with anyone.** If the music variables are not set, the main MikasaVerse bot still starts normally and music commands explain that setup is required. Render's native Python runtime already includes FFmpeg and FFprobe.
@@ -298,7 +298,7 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 | `/queue` | Show the current track and upcoming tracks |
 | `/volume 1-200` | Change volume |
 
-The assistant account must be configured separately and present in the group. The queue advances automatically and the assistant leaves when it becomes empty.
+The assistant account is configured separately and can join a group automatically using a temporary invite. The main bot needs Invite Users permission; the assistant does not need to be an admin. The player also includes inline controls, playlist queueing, loop/replay, shuffle and queue clearing. YouTube anonymous extraction can still be blocked by YouTube; playlist and track availability is not guaranteed.
 
 </details>
 
@@ -336,7 +336,7 @@ The assistant account must be configured separately and present in the group. Th
 
 </details>
 
-## 🧱 Built with
+The music feature set is adapted for MikasaVerse's current Telegram/PyTgCalls stack from ideas and selected functionality in [The-HellBot/Music](https://github.com/The-HellBot/Music). See [`waifu/music/UPSTREAM_CREDITS.md`](waifu/music/UPSTREAM_CREDITS.md) and the included GPL-3.0-or-later license for attribution and terms.\n\n## 🧱 Built with
 
 <p>
   <img src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python"/>

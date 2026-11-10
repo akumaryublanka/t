@@ -14,7 +14,7 @@ from pytgcalls.types import GroupCallConfig, StreamEnded
 from waifu import application
 from waifu.music.config import get_music_credentials
 from waifu.music.downloader import stream_url_sync
-from waifu.music.formatting import duration
+from waifu.music.formatting import duration, player_keyboard
 
 LOGGER = logging.getLogger("waifu.music")
 
@@ -33,7 +33,7 @@ def get_calls() -> PyTgCalls | None:
 def unavailable_message() -> str:
     if _startup_status == "missing_credentials":
         return (
-            "⚙️ <b>Music assistant is not configured yet.</b>\n"
+            "⚙️ <b>Music assistant is not configured yet.</b>\\n"
             "The owner must add <code>MUSIC_API_ID</code>, "
             "<code>MUSIC_API_HASH</code> and <code>MUSIC_SESSION_STRING</code> "
             "to Render Environment."
@@ -50,13 +50,14 @@ def unavailable_message() -> str:
     return "⚠️ <b>Music assistant is starting or temporarily unavailable.</b> Please try again shortly."
 
 
-async def _send_chat_message(chat_id: int, text: str) -> None:
+async def _send_chat_message(chat_id: int, text: str, reply_markup=None) -> None:
     try:
         await application.bot.send_message(
             chat_id=chat_id,
             text=text,
             parse_mode="HTML",
             disable_web_page_preview=True,
+            reply_markup=reply_markup,
         )
     except Exception:
         LOGGER.exception("Could not send music status message to %s", chat_id)
@@ -113,7 +114,6 @@ async def _ensure_chat_peer(chat_id: int) -> None:
 
         raise RuntimeError("Telegram did not confirm that the assistant joined this group.")
     except Exception as exc:
-        # Handle a race where the assistant joined between the dialog check and invite attempt.
         try:
             if await _find_chat_in_dialogs(chat_id):
                 return
@@ -145,15 +145,57 @@ async def _start_track(chat_id: int, track: dict) -> None:
         stream_url,
         GroupCallConfig(auto_start=False),
     )
-    _sessions.setdefault(chat_id, {"current": None, "queue": [], "volume": 100})
-    _sessions[chat_id]["current"] = track
+    state = _sessions.setdefault(
+        chat_id,
+        {"current": None, "queue": [], "volume": 100, "loop_remaining": 0, "paused": False},
+    )
+    state.setdefault("loop_remaining", 0)
+    state.setdefault("paused", False)
+    state["current"] = track
+    state["paused"] = False
 
 
-async def _advance_queue(chat_id: int, *, announce: bool = True) -> None:
+async def replay_current(chat_id: int) -> bool:
+    """Restart the current track without changing the upcoming queue."""
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        if not state or not state.get("current"):
+            return False
+        await _start_track(chat_id, state["current"])
+        return True
+
+
+async def _advance_queue(
+    chat_id: int,
+    *,
+    announce: bool = True,
+    force_skip: bool = False,
+) -> None:
     async with _chat_locks[chat_id]:
         state = _sessions.get(chat_id)
         if not state:
             return
+
+        if force_skip:
+            state["loop_remaining"] = 0
+        else:
+            current = state.get("current")
+            remaining = int(state.get("loop_remaining", 0))
+            if current and remaining > 0:
+                state["loop_remaining"] = remaining - 1
+                try:
+                    await _start_track(chat_id, current)
+                    if announce:
+                        await _send_chat_message(
+                            chat_id,
+                            f"🔁 <b>REPEATING TRACK</b>\\n"
+                            f"🎵 {escape(current['title'])}\\n"
+                            f"⏱️ {duration(current.get('duration'))}",
+                            reply_markup=player_keyboard(chat_id),
+                        )
+                    return
+                except Exception:
+                    LOGGER.exception("Could not repeat the current track in %s", chat_id)
 
         while state["queue"]:
             next_track = state["queue"].pop(0)
@@ -162,9 +204,10 @@ async def _advance_queue(chat_id: int, *, announce: bool = True) -> None:
                 if announce:
                     await _send_chat_message(
                         chat_id,
-                        f"⏭️ <b>NOW PLAYING</b>\n"
-                        f"🎵 {escape(next_track['title'])}\n"
+                        f"⏭️ <b>NOW PLAYING</b>\\n"
+                        f"🎵 {escape(next_track['title'])}\\n"
                         f"⏱️ {duration(next_track.get('duration'))}",
+                        reply_markup=player_keyboard(chat_id),
                     )
                 return
             except Exception:
