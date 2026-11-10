@@ -12,3 +12,8 @@ venv/
 # Pyrogram local session files (sensitive)
 *.session
 *.session-journal
+
+# YouTube / yt-dlp authentication cookies (sensitive)
+cookies.txt
+youtube-cookies.txt
+*.cookies.txt
