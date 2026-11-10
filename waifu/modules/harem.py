@@ -24,12 +24,9 @@ _MEDALS = {
     rarity: rarity.split(" ", 1)[0]
     for rarity in Config.RARITY_MAP.values()
 }
-# Keep old saved Christmas characters on their new Elite icon.
-_MEDALS["🎄 Christmas"] = "🏅"
-
-
 def _rarity_icon(rarity: str) -> str:
-    return _MEDALS.get(rarity, "🎴")
+    canonical = Config.RARITY_LEGACY_MAP.get(str(rarity), rarity)
+    return _MEDALS.get(canonical, "🎴")
 
 
 async def _anime_totals(animes: list[str]) -> dict[str, int]:
