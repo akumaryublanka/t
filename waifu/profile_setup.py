@@ -105,6 +105,11 @@ BOT_COMMANDS = [
     BotCommand("shuffle", "🔀 Shuffle upcoming tracks"),
     BotCommand("clearqueue", "🧹 Clear upcoming tracks"),
     BotCommand("volume", "🔊 Change music volume"),
+    BotCommand("song", "⬇️ Download a song as audio"),
+    BotCommand("favorite", "❤️ Save the current music track"),
+    BotCommand("favs", "💖 View your saved music favourites"),
+    BotCommand("playfav", "▶️ Play a saved music favourite"),
+    BotCommand("delfav", "🗑️ Delete a saved music favourite"),
 ]
 
 
