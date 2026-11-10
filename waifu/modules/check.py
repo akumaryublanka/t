@@ -11,6 +11,7 @@ from telegram.ext import CallbackContext, CommandHandler
 
 from waifu import application
 from waifu import collection as anime_collection
+from waifu.config import Config
 
 
 async def check(update: Update, context: CallbackContext) -> None:
@@ -42,7 +43,7 @@ async def check(update: Update, context: CallbackContext) -> None:
         f"🎴 <b>Character Info</b>\n\n"
         f"🌸 <b>Name:</b> {escape(char['name'])}\n"
         f"📺 <b>Anime:</b> {escape(char['anime'])}\n"
-        f"💎 <b>Rarity:</b> {char.get('rarity', 'Unknown')}\n"
+        f"💎 <b>Rarity:</b> {Config.RARITY_LEGACY_MAP.get(str(char.get('rarity', '')), char.get('rarity', Config.RARITY_MAP[1]))}\n"
         f"🆔 <b>ID:</b> <code>{escape(char['id'])}</code>"
     )
 
