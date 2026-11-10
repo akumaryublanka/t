@@ -62,29 +62,77 @@ async def _send_chat_message(chat_id: int, text: str) -> None:
         LOGGER.exception("Could not send music status message to %s", chat_id)
 
 
-async def _ensure_chat_peer(chat_id: int) -> None:
-    """Populate this session's access-hash cache for the target group.
+async def _find_chat_in_dialogs(chat_id: int) -> bool:
+    """Resolve a group peer from the assistant account's Telegram dialogs."""
+    if _music_client is None:
+        return False
+    async for dialog in _music_client.get_dialogs():
+        if dialog.chat and dialog.chat.id == chat_id:
+            _resolved_chat_peers.add(chat_id)
+            LOGGER.info("Music assistant resolved group peer %s from its dialogs.", chat_id)
+            return True
+    return False
 
-    Session strings use in-memory storage. A numeric supergroup ID alone is
-    insufficient for MTProto calls until its peer/access hash has been seen.
-    get_dialogs() fetches the user's dialogs and populates Pyrogram's peer DB.
+
+async def _ensure_chat_peer(chat_id: int) -> None:
+    """Join the current group using a temporary invite created by the main bot.
+
+    The main bot must be an admin with Invite Users permission. A one-use link
+    is created only when the assistant is not already a participant and is
+    revoked immediately after the join attempt.
     """
     if _music_client is None:
         raise RuntimeError("The music assistant Telegram session is not running.")
     if chat_id in _resolved_chat_peers:
         return
+    if await _find_chat_in_dialogs(chat_id):
+        return
 
-    async for dialog in _music_client.get_dialogs():
-        if dialog.chat and dialog.chat.id == chat_id:
+    invite_link = None
+    try:
+        invite = await application.bot.create_chat_invite_link(
+            chat_id=chat_id,
+            member_limit=1,
+            name="MikasaVerse music assistant",
+        )
+        invite_link = invite.invite_link
+
+        joined_chat = await _music_client.join_chat(invite_link)
+        joined_chat_id = getattr(joined_chat, "id", None)
+        if joined_chat_id is not None and joined_chat_id != chat_id:
+            try:
+                await _music_client.leave_chat(joined_chat_id)
+            except Exception:
+                LOGGER.warning("Could not leave an unexpected chat joined via invite link.")
+            raise RuntimeError("The generated invite link did not lead to the command group.")
+
+        if joined_chat_id == chat_id or await _find_chat_in_dialogs(chat_id):
             _resolved_chat_peers.add(chat_id)
-            LOGGER.info("Music assistant resolved group peer %s from its dialogs.", chat_id)
+            LOGGER.info("Music assistant automatically joined group %s.", chat_id)
             return
 
-    raise RuntimeError(
-        "The music assistant account could not find this group in its Telegram dialogs. "
-        "Add the assistant user account to this group, open the group once with that account, "
-        "and make it an admin with Manage Video Chats permission."
-    )
+        raise RuntimeError("Telegram did not confirm that the assistant joined this group.")
+    except Exception as exc:
+        # Handle a race where the assistant joined between the dialog check and invite attempt.
+        try:
+            if await _find_chat_in_dialogs(chat_id):
+                return
+        except Exception:
+            LOGGER.debug("Could not refresh music assistant dialogs after auto-join failure.", exc_info=True)
+        raise RuntimeError(
+            "Automatic group join failed. Make sure the main MikasaVerse bot is an admin "
+            "with Invite Users permission in this group, and that the group does not require "
+            "manual approval for new members."
+        ) from exc
+    finally:
+        if invite_link:
+            try:
+                await application.bot.revoke_chat_invite_link(
+                    chat_id=chat_id,
+                    invite_link=invite_link,
+                )
+            except Exception:
+                LOGGER.warning("Could not revoke the temporary music assistant invite link in %s.", chat_id)
 
 
 async def _start_track(chat_id: int, track: dict) -> None:
