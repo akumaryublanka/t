@@ -143,7 +143,7 @@ async def _start_track(chat_id: int, track: dict) -> None:
     await _calls.play(
         chat_id,
         stream_url,
-        GroupCallConfig(auto_start=True),
+        GroupCallConfig(auto_start=False),
     )
     _sessions.setdefault(chat_id, {"current": None, "queue": [], "volume": 100})
     _sessions[chat_id]["current"] = track
