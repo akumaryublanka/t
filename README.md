@@ -298,6 +298,8 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 | `/loop 0-10` | Repeat the current track; 0 disables repeat |
 | `/shuffle` | Shuffle upcoming tracks |
 | `/clearqueue` | Clear upcoming tracks without stopping the current song |
+| `/remove position` | Remove one upcoming track |
+| `/move from to` | Move an upcoming track to another position |
 | `/end` | Stop playback, clear the queue and leave voice chat |
 | `/queue` | Show the current track and upcoming tracks |
 | `/volume 1-200` | Change volume |
