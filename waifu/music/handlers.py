@@ -64,12 +64,22 @@ async def play(update: Update, context: CallbackContext) -> None:
             except Exception as exc:
                 runtime._sessions.pop(chat_id, None)
                 runtime.LOGGER.exception("Could not start music in %s", chat_id)
-                await reply(
-                    update,
-                    "❌ Couldn't join or start the voice chat. Make sure the assistant account "
-                    "is in this group and has permission to manage video chats.\n"
-                    f"<code>{escape(str(exc)[:240])}</code>",
-                )
+                error_text = str(exc).lower()
+                error_name = type(exc).__name__.lower()
+                if "noactivegroupcall" in error_name or "no active group call" in error_text:
+                    await reply(
+                        update,
+                        "🎙️ <b>Voice Chat abhi OFF hai!</b>\n"
+                        "Pehle group mein Voice Chat ON karo, phir <code>/play</code> dobara bhejo. "
+                        "Assistant khud join karke music play karega.",
+                    )
+                else:
+                    await reply(
+                        update,
+                        "❌ Couldn't join or start the voice chat. Check that the main MikasaVerse "
+                        "bot can invite members, and that the assistant account is allowed to join.\n"
+                        f"<code>{escape(str(exc)[:240])}</code>",
+                    )
         else:
             state["queue"].append(track)
             position = len(state["queue"])
