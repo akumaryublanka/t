@@ -37,27 +37,27 @@
   <tr>
     <td width="50%">
       <h3>🎴 Catch & Collect</h3>
-      Random character drops, name guessing, favorites, paginated collections, duplicate counts, and inline search.
+      Random character drops, name guessing, favorites, paginated collections, duplicate counts, inline search, wishlist alerts, and anime completion books.
     </td>
     <td width="50%">
       <h3>💎 Rarity & Progression</h3>
-      XP, levels, profile titles, rarity statistics, collection value, and special character drops.
+      XP, levels, profile titles, achievements, rarity statistics, foil-style holographic cards, pity-based gacha summons, and special character drops.
     </td>
   </tr>
   <tr>
     <td width="50%">
       <h3>💰 Economy & Market</h3>
-      Daily coins, redeem codes, character listings, purchases, selling, and delisting.
+      Daily streak bonuses, weekly coins, Neko Coin transfers, gacha summons, redeem codes, and a player marketplace.
     </td>
     <td width="50%">
       <h3>⚔️ Social & Competition</h3>
-      PvP duels, trades, gifts, marriage, daily couples, and leaderboards.
+      PvP duels, trades, gifts, marriage, daily couples, ship meter, and leaderboards.
     </td>
   </tr>
   <tr>
     <td width="50%">
       <h3>🧩 Mini-games</h3>
-      Mines, image quizzes, and typed name-guessing rounds.
+      Mines, image quizzes, timed anime trivia, Infinite Tower, word scramble, and animated dice mini-games.
     </td>
     <td width="50%">
       <h3>🛠️ Admin Toolkit</h3>
