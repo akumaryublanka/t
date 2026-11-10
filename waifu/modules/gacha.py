@@ -9,11 +9,7 @@ from telegram.ext import CallbackContext, CommandHandler
 from waifu import application, collection, user_collection, db
 from waifu.config import Config
 
-# Keep the same relative rarity odds as normal character drops.
-_RARITY_WEIGHTS = {
-    1: 1000, 2: 500, 3: 250, 4: 100, 5: 40, 6: 15, 7: 5, 8: 2,
-    9: 1, 10: 0.5, 11: 0.5, 12: 0.5, 13: 0.5, 14: 0.5, 15: 0.5, 16: 0.5,
-}
+# Same canonical rarity odds as normal drops and /hclaim.\n_RARITY_WEIGHTS = Config.RARITY_WEIGHT_MAP
 _PITY_LIMIT = 10
 
 
@@ -26,6 +22,9 @@ def _rarity_number(value) -> int:
     for number, label in Config.RARITY_MAP.items():
         if text == label:
             return number
+    canonical = Config.RARITY_LEGACY_MAP.get(text)
+    if canonical:
+        return next((number for number, label in Config.RARITY_MAP.items() if label == canonical), 1)
     return 1
 
 
@@ -117,7 +116,7 @@ async def summon(update: Update, context: CallbackContext) -> None:
     pulls: list[dict] = []
     try:
         for _ in range(count):
-            # The 10th consecutive non-rare pull is guaranteed Rare or higher.
+            # The 10th consecutive non-Prime pull is guaranteed Prime or higher.
             picked = _weighted_character(characters, minimum_rarity=3 if pity >= _PITY_LIMIT - 1 else 1)
             char = {key: value for key, value in picked.items() if key != "_id"}
             char["id"] = str(char.get("id", ""))
@@ -155,7 +154,7 @@ async def summon(update: Update, context: CallbackContext) -> None:
         + "\n".join(lines)
         + f"\n━━━━━━━━━━━━━━━━━━\n"
         f"🎴 Best pull: <b>{escape(str(best.get('name', 'Unknown')))}</b>\n"
-        f"🛡️ Rare pity: <b>{pity}/{_PITY_LIMIT}</b>\n"
+        f"🛡️ Prime pity: <b>{pity}/{_PITY_LIMIT}</b>\n"
         f"🪙 Cost: <b>{cost:,}</b>  ·  Balance: <b>{new_balance:,}</b>"
     )
     keyboard = InlineKeyboardMarkup([[
