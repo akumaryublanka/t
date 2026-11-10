@@ -7,6 +7,16 @@ from telegram.constants import ParseMode
 from telegram.ext import CallbackContext, CommandHandler
 
 from waifu import application, collection, user_collection
+from waifu.config import Config
+
+
+def _display_rarity(value) -> str:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return Config.RARITY_MAP.get(value, Config.RARITY_MAP[1])
+    raw = str(value or Config.RARITY_MAP[1]).strip()
+    if raw.isdigit():
+        return Config.RARITY_MAP.get(int(raw), Config.RARITY_MAP[1])
+    return Config.RARITY_LEGACY_MAP.get(raw, raw)
 
 
 async def _find_character(query: str):
@@ -113,7 +123,7 @@ async def notify_wishlist_match(bot, char: dict) -> None:
         "🔔 <b>WISHLIST ALERT — MIKASAVERSE</b>\n\n"
         f"⭐ <b>{escape(str(char.get('name', 'Unknown')))}</b>\n"
         f"🎬 {escape(str(char.get('anime', 'Unknown')))}\n"
-        f"✨ {escape(str(char.get('rarity', 'Character')))}\n\n"
+        f"✨ {escape(_display_rarity(char.get('rarity')))}\n\n"
         "This character just appeared in a group drop. Open your active game group and try /guess!"
     )
     for player in users:
