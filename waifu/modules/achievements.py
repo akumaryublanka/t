@@ -52,6 +52,8 @@ async def achievements(update: Update, context: CallbackContext) -> None:
     streak = int(player.get("daily_streak", 0) or 0)
     tower = int(player.get("tower_best_floor", 0) or 0)
     scramble = int(player.get("scramble_wins", 0) or 0)
+    trivia_wins = int(player.get("trivia_wins", 0) or 0)
+    coin_game_wins = int(player.get("coin_game_wins", 0) or 0)
     unique_count = len(unique)
 
     milestones = [
@@ -65,6 +67,8 @@ async def achievements(update: Update, context: CallbackContext) -> None:
         ("🔥 Daily Devotion", "Reach a 7-day daily streak", streak, 7),
         ("🏯 Tower Climber", "Reach floor 10 in the Infinite Tower", tower, 10),
         ("🧩 Word Wizard", "Win 10 scramble rounds", scramble, 10),
+        ("🧠 Trivia Champion", "Answer 5 anime trivia questions correctly", trivia_wins, 5),
+        ("🎲 Lucky Collector", "Win 10 Neko coin mini-games", coin_game_wins, 10),
         ("✨ XP Apprentice", "Earn 1,000 XP", xp, 1000),
     ]
 
