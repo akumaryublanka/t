@@ -23,6 +23,7 @@ from telegram import InputFile
 
 from waifu import TOKEN, application, CHARA_CHANNEL_ID, collection, user_collection, market_collection, db
 from waifu.image_watermark import watermark_image_bytes
+from waifu.config import Config
 
 MAX_INIT_DATA_AGE = 86_400
 MINES_COUNT = 3
@@ -186,6 +187,15 @@ async def _identity(request: web.Request) -> dict:
     return tg_user
 
 
+def _display_rarity(value) -> str:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return Config.RARITY_MAP.get(value, Config.RARITY_MAP[1])
+    raw = str(value or Config.RARITY_MAP[1]).strip()
+    if raw.isdigit():
+        return Config.RARITY_MAP.get(int(raw), Config.RARITY_MAP[1])
+    return Config.RARITY_LEGACY_MAP.get(raw, raw)
+
+
 def _public_character(char: dict) -> dict:
     char_id = str(char.get("id", ""))
     image_ref = str(char.get("img_url", "") or "").strip()
@@ -197,7 +207,7 @@ def _public_character(char: dict) -> dict:
         "id": char_id,
         "name": str(char.get("name", "Unknown")),
         "anime": str(char.get("anime", "Unknown")),
-        "rarity": str(char.get("rarity", "Character")),
+        "rarity": _display_rarity(char.get("rarity")),
         "img_url": image_ref,
     }
 
