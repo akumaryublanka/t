@@ -11,6 +11,7 @@ from telegram.ext import CallbackContext, CommandHandler, MessageHandler, filter
 
 from waifu import application, collection, user_collection, db
 from waifu.modules.auto_delete import schedule_delete, NGUESS_DELAY
+from waifu.config import Config
 
 _COINS_REWARD  = 50
 _XP_REWARD     = 25
@@ -156,7 +157,7 @@ async def nguess_message(update: Update, context: CallbackContext) -> None:
         f"<a href='tg://user?id={uid}'>{escape(user.first_name)}</a> got it!\n\n"
         f"🌸 <b>{escape(char['name'])}</b>\n"
         f"📺 {escape(char['anime'])}\n"
-        f"💎 {char.get('rarity', 'Unknown')}\n\n"
+        f"💎 {Config.RARITY_LEGACY_MAP.get(str(char.get('rarity', '')), char.get('rarity', Config.RARITY_MAP[1]))}\n\n"
         f"🟡 +{game['coins_reward']} Neko Coins  ✨ +{game['xp_reward']} XP",
         parse_mode=ParseMode.HTML,
     )
