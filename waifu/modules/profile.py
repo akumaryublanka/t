@@ -25,22 +25,8 @@ RARITY_ORDER = sorted(RARITY_MAP, key=lambda number: Config.RARITY_VALUE_MAP[num
 VALUE_MAP = Config.RARITY_VALUE_MAP
 
 RARITY_STARS = {
-    1: "★☆☆☆☆☆☆☆☆",
-    2: "★★☆☆☆☆☆☆☆",
-    3: "★★★☆☆☆☆☆☆",
-    4: "★★★★☆☆☆☆☆",
-    5: "★★★★★☆☆☆☆",
-    6: "★★★★★★☆☆☆",
-    7: "★★★★★★★☆☆",
-    8: "★★★★★★★★☆",
-    9: "★★★★★★★★★",
-    10: "★★★★★★★★★★",
-    11: "★★★★★★★★★★",
-    12: "★★★★★★★★★★",
-    13: "★★★★★★★★★★",
-    14: "★★★★★★★★★★",
-    15: "★★★★★★★★★★",
-    16: "★★★★★★★★★★",
+    number: "★" * min(10, index + 1) + "☆" * max(0, 10 - (index + 1))
+    for index, number in enumerate(RARITY_ORDER)
 }
 
 LEGACY_RARITY_MAP = {label: number for number, label in RARITY_MAP.items()}
