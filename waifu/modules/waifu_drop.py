@@ -296,14 +296,10 @@ async def _pick_character(all_chars: list, sent: list) -> dict:
         if weight > 0:
             weighted_pool.append((char, weight))
 
-    # If owner-configured rarity weights exist but no character is eligible,
-    # skip this drop rather than bypass an explicit disabled rarity.
+    # Never bypass a disabled rarity or inactive event with an unweighted fallback.
     if not weighted_pool:
-        if custom_weights:
-            LOGGER.info("No eligible characters for configured rarity weights; skipping drop")
-            return {}
-        LOGGER.warning("No legacy rarity weights remain; falling back to any character")
-        return random.choice(all_chars)
+        LOGGER.info("No eligible characters for the active rarity/event settings; skipping drop")
+        return {}
     chars = [c for c, _ in weighted_pool]
     weights = [w for _, w in weighted_pool]
     return random.choices(chars, weights=weights, k=1)[0]
