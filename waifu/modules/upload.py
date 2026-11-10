@@ -188,7 +188,7 @@ def _parse_caption(caption: str) -> dict | None:
                 rarity = val
                 break
     if not rarity:
-        rarity = "⚪ Common"
+        rarity = RARITY_MAP[1]
 
     return {
         "name": fields["name"].title(),
