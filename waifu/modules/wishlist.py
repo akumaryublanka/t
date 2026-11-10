@@ -12,10 +12,13 @@ from waifu.config import Config
 
 def _display_rarity(value) -> str:
     if isinstance(value, int) and not isinstance(value, bool):
-        return Config.RARITY_MAP.get(value, Config.RARITY_MAP[1])
+        number = value if value in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(value, 1)
+        return Config.RARITY_MAP.get(number, Config.RARITY_MAP[1])
     raw = str(value or Config.RARITY_MAP[1]).strip()
     if raw.isdigit():
-        return Config.RARITY_MAP.get(int(raw), Config.RARITY_MAP[1])
+        number = int(raw)
+        number = number if number in Config.RARITY_MAP else Config.RARITY_LEGACY_NUMBER_MAP.get(number, 1)
+        return Config.RARITY_MAP.get(number, Config.RARITY_MAP[1])
     return Config.RARITY_LEGACY_MAP.get(raw, raw)
 
 
