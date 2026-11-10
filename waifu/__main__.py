@@ -67,6 +67,7 @@ async def _post_init(application) -> None:
     from waifu.profile_setup import setup_bot_profile
     from waifu.modules.inlinequery import create_indexes
     from waifu.modules.waifu_drop import start_scheduler
+    from waifu.modules.music import start_music
 
     await setup_bot_profile(application.bot)
     await _migrate_indexes()
@@ -74,6 +75,7 @@ async def _post_init(application) -> None:
     LOGGER.info("DB indexes ensured.")
     start_scheduler(application.bot)
     LOGGER.info("Drop scheduler started.")
+    await start_music()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -135,6 +137,8 @@ async def _run_bot() -> None:
         LOGGER.info("Stopping bot…")
         await application.updater.stop()
         await application.stop()
+        from waifu.modules.music import stop_music
+        await stop_music()
 
 
 def main() -> None:
