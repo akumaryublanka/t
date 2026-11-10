@@ -121,6 +121,7 @@ async def summon(update: Update, context: CallbackContext) -> None:
             picked = _weighted_character(characters, minimum_rarity=3 if pity >= _PITY_LIMIT - 1 else 1)
             char = {key: value for key, value in picked.items() if key != "_id"}
             char["id"] = str(char.get("id", ""))
+            char["rarity"] = Config.RARITY_MAP[_rarity_number(char.get("rarity", 1))]
             pulls.append(char)
             if _rarity_number(char.get("rarity")) >= 3:
                 pity = 0
