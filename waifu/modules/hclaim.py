@@ -19,38 +19,17 @@ ALLOWED_GROUP_LINK = "https://t.me/MeowGang_FriendsChatting_Group"
 hclaim_col = db["hclaim_cooldowns"]
 
 RARITY_MAP = Config.RARITY_MAP
-
-# Same rarity odds as normal drops. Event rarities are given the legacy Extreme-tier weight.
-_RARITY_WEIGHT_BY_ID = {
-    1: 1000,
-    2: 500,
-    3: 250,
-    4: 100,
-    5: 40,
-    6: 15,
-    7: 5,
-    8: 2,
-    9: 1,
-    10: 0.5,
-    11: 0.5,
-    12: 0.5,
-    13: 0.5,
-    14: 0.5,
-    15: 0.5,
-    16: 0.5,
-}
 RARITY_WEIGHTS = {
     RARITY_MAP[number]: weight
-    for number, weight in _RARITY_WEIGHT_BY_ID.items()
+    for number, weight in Config.RARITY_WEIGHT_MAP.items()
     if number in RARITY_MAP
 }
 _LEGACY_RARITY_NUMBERS = {26: 11, 27: 12, 28: 13, 29: 14, 30: 15, 31: 16}
-_LEGACY_RARITY_LABELS = {"🎄 Christmas": RARITY_MAP[13], "Christmas": RARITY_MAP[13]}
 
 def _rarity_label(value) -> str:
     if isinstance(value, int) and not isinstance(value, bool):
         number = value if value in RARITY_MAP else _LEGACY_RARITY_NUMBERS.get(value)
-        return RARITY_MAP.get(number, "⚪ Common")
+        return RARITY_MAP.get(number, RARITY_MAP[1])
     if isinstance(value, str):
         value = value.strip()
         if value in RARITY_WEIGHTS:
@@ -58,10 +37,10 @@ def _rarity_label(value) -> str:
         if value.isdigit():
             number = int(value)
             number = number if number in RARITY_MAP else _LEGACY_RARITY_NUMBERS.get(number)
-            return RARITY_MAP.get(number, "⚪ Common")
-        value = _LEGACY_RARITY_LABELS.get(value, value)
-        return value if value in RARITY_WEIGHTS else "⚪ Common"
-    return "⚪ Common"
+            return RARITY_MAP.get(number, RARITY_MAP[1])
+        value = Config.RARITY_LEGACY_MAP.get(value, value)
+        return value if value in RARITY_WEIGHTS else RARITY_MAP[1]
+    return RARITY_MAP[1]
 
 
 def _now_utc() -> datetime:
