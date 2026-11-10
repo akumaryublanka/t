@@ -41,9 +41,12 @@ async def _image_bytes(bot, reference: str) -> bytes:
 
 
 def _rarity_label(value) -> str:
-    if isinstance(value, int) or str(value).isdigit():
-        return Config.RARITY_MAP.get(int(value), "⚪ Common")
-    return str(value or "⚪ Common")
+    if isinstance(value, int) and not isinstance(value, bool):
+        return Config.RARITY_MAP.get(value, Config.RARITY_MAP[1])
+    raw = str(value or Config.RARITY_MAP[1]).strip()
+    if raw.isdigit():
+        return Config.RARITY_MAP.get(int(raw), Config.RARITY_MAP[1])
+    return Config.RARITY_LEGACY_MAP.get(raw, raw)
 
 
 def render_holographic_card(image_data: bytes, char: dict) -> BytesIO:
@@ -85,7 +88,7 @@ def render_holographic_card(image_data: bytes, char: dict) -> BytesIO:
     draw.rectangle((30, 850, width-30, height-30), fill=(22, 13, 45, 255))
     name = str(char.get("name", "Unknown"))
     anime = str(char.get("anime", "Unknown"))
-    rarity = _rarity_label(char.get("rarity", "⚪ Common"))
+    rarity = _rarity_label(char.get("rarity", Config.RARITY_MAP[1]))
     name_size = 52
     while name_size > 26 and draw.textbbox((0, 0), name, font=_font(name_size, True))[2] > 740:
         name_size -= 2
