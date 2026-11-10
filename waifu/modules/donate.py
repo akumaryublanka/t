@@ -10,6 +10,7 @@ from telegram.constants import ParseMode
 from telegram.ext import CallbackContext, CommandHandler
 
 from waifu import application, collection, user_collection, OWNER_ID
+from waifu.config import Config
 
 
 async def donate(update: Update, context: CallbackContext) -> None:
@@ -52,6 +53,11 @@ async def donate(update: Update, context: CallbackContext) -> None:
             parse_mode=ParseMode.HTML,
         )
         return
+
+    # Store the current rarity label even when donating an older character.
+    raw_rarity = char.get("rarity", Config.RARITY_MAP[1])
+    rarity_text = str(raw_rarity).strip()
+    char = {**char, "rarity": Config.RARITY_MAP.get(int(rarity_text), Config.RARITY_MAP[1]) if rarity_text.isdigit() else Config.RARITY_LEGACY_MAP.get(rarity_text, rarity_text)}
 
     # Add character to target user
     await user_collection.update_one(
