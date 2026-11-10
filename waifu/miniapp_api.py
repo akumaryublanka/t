@@ -446,6 +446,8 @@ async def api_store_buy(request: web.Request) -> web.Response:
             raise web.HTTPConflict(text=json.dumps({"error": "This character has just been sold."}), content_type="application/json")
 
     character_copy = {key: char.get(key) for key in ("id", "name", "anime", "rarity", "img_url", "message_id") if char.get(key) is not None}
+    if "rarity" in character_copy:
+        character_copy["rarity"] = _display_rarity(character_copy["rarity"])
     debit = await user_collection.update_one(
         {"id": uid, balance_field: {"$gte": price}},
         {"$inc": {balance_field: -price}, "$push": {"characters": character_copy}},
@@ -1549,7 +1551,7 @@ async def api_admin_redeem_codes(request: web.Request) -> web.Response:
         doc = {
             "code": code, "type": "char", "char_id": char_id,
             "char_name": str(char.get("name", "Character")),
-            "char_rarity": str(char.get("rarity", "Unknown")),
+            "char_rarity": _display_rarity(char.get("rarity")),
             "uses_left": uses, "total_uses": uses, "used_by": [],
         }
         summary = {"type": "char", "char_id": char_id, "char_name": doc["char_name"], "uses": uses}
@@ -1720,7 +1722,7 @@ async def api_admin_restore(request: web.Request) -> web.Response:
             else:
                 doc["char_id"] = str(row.get("char_id", ""))[:32]
                 doc["char_name"] = str(row.get("char_name", "Character"))[:100]
-                doc["char_rarity"] = str(row.get("char_rarity", "Unknown"))[:80]
+                doc["char_rarity"] = _display_rarity(row.get("char_rarity"))[:80]
             await db["redeem_codes"].update_one({"code": code}, {"$set": doc}, upsert=True)
             count += 1
         counts["redeem_codes"] = count
