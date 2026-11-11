@@ -345,7 +345,7 @@ async def _download_track(track: dict, chat_id: int) -> dict:
     try:
         return await _run_blocking_download(
             download_track_sync,
-            timeout=35,
+            timeout=55,
             source=track["source"],
             ytmusic_candidates=track.get("ytmusic_candidates"),
             fallback_query=track.get("search_query"),
