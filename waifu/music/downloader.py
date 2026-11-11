@@ -126,11 +126,11 @@ def _youtube_result_score(query: str, item: dict) -> int:
 
     # Keep requested versions when the user explicitly asks for them.
     version_groups = (
-        ({"remix", "remixed"}, 42),
-        ({"tiktok", "tik", "tok"}, 24),
-        ({"slowed", "reverb", "sped", "speed", "nightcore"}, 34),
-        ({"cover", "karaoke", "tribute"}, 38),
-        ({"mashup", "edit", "fanmade", "unofficial"}, 30),
+        ({"remix", "remixed"}, 65),
+        ({"tiktok", "tik", "tok"}, 50),
+        ({"slowed", "reverb", "sped", "speed", "nightcore"}, 55),
+        ({"cover", "karaoke", "tribute"}, 55),
+        ({"mashup", "edit", "fanmade", "unofficial"}, 48),
         ({"lofi", "8d", "instrumental", "bass", "boosted"}, 26),
     )
     for words, penalty in version_groups:
@@ -431,7 +431,7 @@ def download_track_sync(
     ytmusic_candidates: list[str] | None = None,
     fallback_query: str | None = None,
 ) -> dict:
-    """Download audio for VC playback: YouTube Music API first, then yt-dlp."""
+    """Download audio for VC playback: YouTube Music API first, ranked fallbacks second."""
     import glob
     import os
     import shutil
@@ -465,26 +465,77 @@ def download_track_sync(
             shutil.rmtree(ytm_temp_dir, ignore_errors=True)
             LOGGER.warning("YouTube Music API playback path unavailable: %s", exc)
 
-    if fallback_query:
-        searches = [f"ytsearch1:{fallback_query}", f"scsearch1:{fallback_query}"]
-    else:
-        searches = [source] if is_url else [f"ytsearch1:{source}", f"scsearch1:{source}"]
+    query = fallback_query or (None if is_url else source)
+    searches = (
+        [(f"ytsearch8:{query}", query), (f"scsearch8:{query}", query)]
+        if query else [(source, None)]
+    )
     errors = []
-    for search in searches:
+    for search, search_query in searches:
         temp_dir = tempfile.mkdtemp(prefix="mikasa-vc-")
         options = {
             **_youtube_options(),
             "format": "bestaudio/best",
             "skip_download": False,
             "noplaylist": True,
-            "playlist_items": "1",
             "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
             "max_filesize": max_bytes,
             "overwrites": True,
         }
         try:
             with YoutubeDL(options) as ydl:
-                info = ydl.extract_info(search, download=True)
+                if search_query:
+                    catalogue = ydl.extract_info(search, download=False)
+                    entries = [
+                        entry for entry in (catalogue or {}).get("entries", [])
+                        if entry
+                    ]
+                    ranked = sorted(
+                        entries,
+                        key=lambda entry: _youtube_result_score(
+                            search_query,
+                            {
+                                "title": entry.get("title"),
+                                "artists": [{
+                                    "name": (
+                                        entry.get("artist")
+                                        or entry.get("uploader")
+                                        or entry.get("channel")
+                                        or ""
+                                    )
+                                }],
+                            },
+                        ),
+                        reverse=True,
+                    )
+                    if not ranked:
+                        raise RuntimeError("No search results were returned.")
+                    best = ranked[0]
+                    best_score = _youtube_result_score(
+                        search_query,
+                        {
+                            "title": best.get("title"),
+                            "artists": [{
+                                "name": (
+                                    best.get("artist")
+                                    or best.get("uploader")
+                                    or best.get("channel")
+                                    or ""
+                                )
+                            }],
+                        },
+                    )
+                    if best_score < 65:
+                        raise RuntimeError(
+                            "No close match for the requested original song was found."
+                        )
+                    target = best.get("webpage_url") or best.get("url")
+                    if not target:
+                        raise RuntimeError("The matched search result has no playable URL.")
+                    info = ydl.extract_info(target, download=True)
+                else:
+                    info = ydl.extract_info(search, download=True)
+
             if info and info.get("entries"):
                 info = next((entry for entry in info["entries"] if entry), None)
             ignored = {".part", ".ytdl", ".json", ".jpg", ".jpeg", ".png", ".webp"}
@@ -515,13 +566,17 @@ def download_track_sync(
         except Exception as exc:
             errors.append(str(exc))
             shutil.rmtree(temp_dir, ignore_errors=True)
-            LOGGER.warning("VC audio download failed for %s: %s",
-                           search.split(":", 1)[0] if ":" in search else "direct URL", exc)
+            LOGGER.warning(
+                "VC audio download failed for %s: %s",
+                search.split(":", 1)[0] if ":" in search else "direct URL",
+                exc,
+            )
 
     detail = errors[-1] if errors else "No playable audio was found."
     raise RuntimeError(
         "Could not prepare this track for voice-chat playback. " + detail[:280]
     )
+
 
 
 def _ytmusic_video_search(query: str, limit: int = 5) -> list[dict]:
