@@ -35,6 +35,8 @@ def _playing_text(track: dict, queued: int = 0) -> str:
         f"\n⏱️ {duration(track.get('duration'))}"
         f"\n👤 Requested by {escape(track.get('requested_by', 'Unknown'))}"
     )
+    if track.get("media_type") == "video":
+        text = text.replace("🎶 <b>MIKASAVERSE · NOW PLAYING</b>", "🎬 <b>MIKASAVERSE · VIDEO IN VC</b>")
     if queued:
         text += f"\n\n➕ Added <b>{queued}</b> more track(s) to the queue."
     return text
@@ -104,7 +106,11 @@ async def _require_music(update: Update) -> bool:
     return True
 
 
-async def _add_tracks(update: Update, tracks: list[dict]) -> None:
+async def _add_tracks(
+    update: Update,
+    tracks: list[dict],
+    status_message=None,
+) -> None:
     chat_id = update.effective_chat.id
     requester = update.effective_user.first_name if update.effective_user else "Unknown"
     for track in tracks:
@@ -114,6 +120,16 @@ async def _add_tracks(update: Update, tracks: list[dict]) -> None:
         state = runtime._sessions.setdefault(chat_id, _new_state())
         if state.get("current") is None:
             first, *remaining = tracks
+            if status_message:
+                preparing = (
+                    "🎬 <b>Preparing video for the voice chat…</b>"
+                    if first.get("media_type") == "video"
+                    else "🎧 <b>Preparing high-quality audio…</b>"
+                )
+                try:
+                    await status_message.edit_text(preparing, parse_mode="HTML")
+                except Exception:
+                    pass
             try:
                 await runtime._start_track(chat_id, first)
             except Exception:
@@ -121,6 +137,11 @@ async def _add_tracks(update: Update, tracks: list[dict]) -> None:
                 raise
             state["queue"].extend(remaining)
             await _reply_now_playing(update, first, len(remaining))
+            if status_message:
+                try:
+                    await status_message.delete()
+                except Exception:
+                    pass
         else:
             state["queue"].extend(tracks)
             position = len(state["queue"]) - len(tracks) + 1
@@ -128,11 +149,21 @@ async def _add_tracks(update: Update, tracks: list[dict]) -> None:
                 track_text = f"🎵 {escape(tracks[0]['title'])}"
             else:
                 track_text = f"🎵 Added <b>{len(tracks)}</b> playlist tracks"
-            await reply(
-                update,
+            queued_text = (
                 f"➕ <b>Added to queue</b>\n{track_text}\n"
-                f"📍 Starting position: <b>{position}</b>",
+                f"📍 Starting position: <b>{position}</b>"
             )
+            if status_message:
+                try:
+                    await status_message.edit_text(
+                        queued_text,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                    )
+                except Exception:
+                    await reply(update, queued_text)
+            else:
+                await reply(update, queued_text)
 
 
 async def play(update: Update, context: CallbackContext) -> None:
@@ -146,31 +177,102 @@ async def play(update: Update, context: CallbackContext) -> None:
         await reply(update, "❌ Search text or URL is too long.")
         return
 
-    await reply(update, "🔎 <i>Finding your track…</i>")
+    status = await update.effective_message.reply_text(
+        "🔎 <b>Finding your track…</b>",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
     try:
         tracks = []
         if query.startswith(("http://", "https://")) and "list=" in query:
-            tracks = await asyncio.to_thread(extract_playlist_sync, query, 20)
+            tracks = await asyncio.wait_for(
+                asyncio.to_thread(extract_playlist_sync, query, 20),
+                timeout=30,
+            )
         if not tracks:
-            tracks = [await asyncio.to_thread(extract_info_sync, query)]
-        await _add_tracks(update, tracks)
+            track = await asyncio.wait_for(
+                asyncio.to_thread(extract_info_sync, query),
+                timeout=28,
+            )
+            tracks = [track]
+        await status.edit_text(
+            "🎧 <b>Track found.</b> Preparing playback…",
+            parse_mode="HTML",
+        )
+        await _add_tracks(update, tracks, status_message=status)
+    except asyncio.TimeoutError:
+        runtime.LOGGER.warning("Music search timed out for query: %s", query[:120])
+        try:
+            await status.edit_text(
+                "⏳ <b>Search is taking too long.</b> Try a shorter song title or a direct link.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
     except Exception as exc:
         runtime.LOGGER.warning("Music request could not be completed: %s", exc)
         error_text = str(exc).lower()
         error_name = type(exc).__name__.lower()
         if "noactivegroupcall" in error_name or "no active group call" in error_text:
-            await reply(
-                update,
+            user_text = (
                 "🎙️ <b>Voice Chat abhi OFF hai!</b>\n"
                 "Pehle group mein Voice Chat ON karo, phir <code>/play</code> dobara bhejo. "
-                "Assistant khud join karke music play karega.",
+                "Assistant khud join karke music play karega."
             )
         else:
-            await reply(
-                update,
-                "🌸 <b>Oops! Ye track abhi play nahi ho pa raha.</b>\n"
-                "Koi doosra song try karo — MikasaVerse music ke liye ready hai! 🎶",
+            user_text = (
+                "🌸 <b>Ye track abhi play nahi ho pa raha.</b>\n"
+                "Koi doosra version ya direct YouTube/SoundCloud link try karo."
             )
+        try:
+            await status.edit_text(
+                user_text,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+        except Exception:
+            await reply(update, user_text)
+
+
+async def vplay(update: Update, context: CallbackContext) -> None:
+    if not await _require_music(update):
+        return
+    query = " ".join(context.args).strip()
+    if not query:
+        await reply(update, "Usage: <code>/vplay video title or YouTube link</code>")
+        return
+    if len(query) > 1000:
+        await reply(update, "❌ Video title or link is too long.")
+        return
+
+    status = await update.effective_message.reply_text(
+        "🎬 <b>Finding a video for voice chat…</b>",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+    track = {
+        "source": query,
+        "title": query if query.startswith(("http://", "https://")) else f"Video: {query}",
+        "duration": None,
+        "media_type": "video",
+    }
+    try:
+        await status.edit_text(
+            "⬇️ <b>Preparing video + audio stream…</b>",
+            parse_mode="HTML",
+        )
+        await _add_tracks(update, [track], status_message=status)
+    except Exception as exc:
+        runtime.LOGGER.warning("VC video request could not be completed: %s", exc)
+        message = (
+            "🎬 <b>Video couldn't be started.</b>\n"
+            "Try a shorter public YouTube video or another direct video link. "
+            "Long or unavailable videos may not be supported."
+        )
+        try:
+            await status.edit_text(message, parse_mode="HTML")
+        except Exception:
+            await reply(update, message)
 
 
 async def pause(update: Update, context: CallbackContext) -> None:
@@ -553,6 +655,7 @@ async def delete_favorite(update: Update, context: CallbackContext) -> None:
 def register_handlers() -> None:
     # Let the dispatcher await commands; per-chat runtime locks serialize player operations.
     application.add_handler(CommandHandler("play", play))
+    application.add_handler(CommandHandler("vplay", vplay))
     application.add_handler(CommandHandler("pause", pause))
     application.add_handler(CommandHandler("resume", resume))
     application.add_handler(CommandHandler("skip", skip))
