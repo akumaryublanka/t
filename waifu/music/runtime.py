@@ -192,7 +192,10 @@ async def _send_now_playing(chat_id: int, track: dict) -> None:
         await _send_chat_message(
             chat_id,
             caption,
-            reply_markup=player_keyboard(chat_id),
+            reply_markup=player_keyboard(
+                chat_id,
+                autoplay=bool((_sessions.get(chat_id) or {}).get("autoplay", False)),
+            ),
         )
 
 
