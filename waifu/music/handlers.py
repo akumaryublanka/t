@@ -147,21 +147,19 @@ async def play(update: Update, context: CallbackContext) -> None:
 async def pause(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
-    await runtime.get_calls().pause(update.effective_chat.id)
-    state = runtime._sessions.get(update.effective_chat.id)
-    if state:
-        state["paused"] = True
-    await reply(update, "⏸️ Music paused.")
+    if await runtime.pause_chat(update.effective_chat.id):
+        await reply(update, "⏸️ Music paused.")
+    else:
+        await reply(update, "ℹ️ No active track is playing.")
 
 
 async def resume(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
-    await runtime.get_calls().resume(update.effective_chat.id)
-    state = runtime._sessions.get(update.effective_chat.id)
-    if state:
-        state["paused"] = False
-    await reply(update, "▶️ Music resumed.")
+    if await runtime.resume_chat(update.effective_chat.id):
+        await reply(update, "▶️ Music resumed.")
+    else:
+        await reply(update, "ℹ️ No paused track is available.")
 
 
 async def skip(update: Update, context: CallbackContext) -> None:
@@ -172,23 +170,24 @@ async def skip(update: Update, context: CallbackContext) -> None:
     if not state or not state.get("current"):
         await reply(update, "ℹ️ Nothing is playing right now.")
         return
-    await reply(update, "⏭️ Skipping the current track…")
-    await runtime._advance_queue(chat_id, announce=True, force_skip=True)
+    if await runtime.skip_current(chat_id):
+        await reply(update, "⏭️ Skipped the current track.")
+    else:
+        await reply(update, "ℹ️ Track already changed or nothing is playing.")
 
 
 async def end(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
     chat_id = update.effective_chat.id
-    async with runtime._chat_locks[chat_id]:
-        await runtime.stop_chat(chat_id)
+    await runtime.stop_chat(chat_id)
     await reply(update, "⏹️ <b>Music stopped.</b> Queue cleared and assistant left the voice chat.")
 
 
 async def queue(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
-    state = runtime._sessions.get(update.effective_chat.id)
+    state = await runtime.session_snapshot(update.effective_chat.id)
     if not state or not state.get("current"):
         await reply(update, "🎵 The music queue is empty.")
         return
@@ -213,7 +212,7 @@ async def queue(update: Update, context: CallbackContext) -> None:
 async def current(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
-    state = runtime._sessions.get(update.effective_chat.id)
+    state = await runtime.session_snapshot(update.effective_chat.id)
     if not state or not state.get("current"):
         await reply(update, "ℹ️ Nothing is playing right now.")
         return
@@ -329,8 +328,10 @@ async def volume(update: Update, context: CallbackContext) -> None:
     chat_id = update.effective_chat.id
     try:
         await runtime.get_calls().change_volume_call(chat_id, level)
-        runtime._sessions.setdefault(chat_id, _new_state())["volume"] = level
-        await reply(update, f"🔊 Volume set to <b>{level}%</b>.")
+        if await runtime.change_volume(chat_id, level):
+            await reply(update, f"🔊 Volume set to <b>{level}%</b>.")
+        else:
+            await reply(update, "❌ Couldn't change volume. Start a track first.")
     except Exception:
         await reply(update, "❌ Couldn't change volume. Start a track first.")
 
@@ -377,18 +378,20 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
 
     try:
         if action == "pause":
-            await runtime.get_calls().pause(chat_id)
-            state["paused"] = True
+            if not await runtime.pause_chat(chat_id):
+                await query.answer("Nothing is playing.", show_alert=True)
+                return
             await query.message.edit_reply_markup(reply_markup=player_keyboard(chat_id, paused=True))
             await query.answer("Paused")
         elif action == "resume":
-            await runtime.get_calls().resume(chat_id)
-            state["paused"] = False
+            if not await runtime.resume_chat(chat_id):
+                await query.answer("No paused track.", show_alert=True)
+                return
             await query.message.edit_reply_markup(reply_markup=player_keyboard(chat_id, paused=False))
             await query.answer("Resumed")
         elif action == "skip":
             await query.answer("Skipping…")
-            await runtime._advance_queue(chat_id, announce=True, force_skip=True)
+            await runtime.skip_current(chat_id)
         elif action == "replay":
             await runtime.replay_current(chat_id)
             await query.answer("Replaying current track")
@@ -396,8 +399,7 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
             state["loop_remaining"] = 0 if state.get("loop_remaining", 0) else 1
             await query.answer("Loop disabled" if state["loop_remaining"] == 0 else "One repeat enabled")
         elif action == "end":
-            async with runtime._chat_locks[chat_id]:
-                await runtime.stop_chat(chat_id)
+            await runtime.stop_chat(chat_id)
             await query.answer("Music stopped")
             await query.message.reply_text("⏹️ Music stopped and assistant left the voice chat.")
     except Exception as exc:
@@ -533,27 +535,28 @@ async def delete_favorite(update: Update, context: CallbackContext) -> None:
 
 
 def register_handlers() -> None:
-    application.add_handler(CommandHandler("play", play, block=False))
-    application.add_handler(CommandHandler("pause", pause, block=False))
-    application.add_handler(CommandHandler("resume", resume, block=False))
-    application.add_handler(CommandHandler("skip", skip, block=False))
-    application.add_handler(CommandHandler("end", end, block=False))
-    application.add_handler(CommandHandler("queue", queue, block=False))
-    application.add_handler(CommandHandler("current", current, block=False))
-    application.add_handler(CommandHandler("playing", current, block=False))
-    application.add_handler(CommandHandler("replay", replay, block=False))
-    application.add_handler(CommandHandler("loop", loop, block=False))
-    application.add_handler(CommandHandler("shuffle", shuffle, block=False))
-    application.add_handler(CommandHandler("clearqueue", clear_queue, block=False))
-    application.add_handler(CommandHandler("remove", remove_track, block=False))
-    application.add_handler(CommandHandler("move", move_track, block=False))
-    application.add_handler(CommandHandler("volume", volume, block=False))
-    application.add_handler(CommandHandler("song", song_download, block=False))
-    application.add_handler(CommandHandler("favorite", favorite, block=False))
-    application.add_handler(CommandHandler("favs", favs, block=False))
-    application.add_handler(CommandHandler("favorites", favs, block=False))
-    application.add_handler(CommandHandler("playfav", play_favorite, block=False))
-    application.add_handler(CommandHandler("delfav", delete_favorite, block=False))
+    # Let the dispatcher await commands; per-chat runtime locks serialize player operations.
+    application.add_handler(CommandHandler("play", play))
+    application.add_handler(CommandHandler("pause", pause))
+    application.add_handler(CommandHandler("resume", resume))
+    application.add_handler(CommandHandler("skip", skip))
+    application.add_handler(CommandHandler("end", end))
+    application.add_handler(CommandHandler("queue", queue))
+    application.add_handler(CommandHandler("current", current))
+    application.add_handler(CommandHandler("playing", current))
+    application.add_handler(CommandHandler("replay", replay))
+    application.add_handler(CommandHandler("loop", loop))
+    application.add_handler(CommandHandler("shuffle", shuffle))
+    application.add_handler(CommandHandler("clearqueue", clear_queue))
+    application.add_handler(CommandHandler("remove", remove_track))
+    application.add_handler(CommandHandler("move", move_track))
+    application.add_handler(CommandHandler("volume", volume))
+    application.add_handler(CommandHandler("song", song_download))
+    application.add_handler(CommandHandler("favorite", favorite))
+    application.add_handler(CommandHandler("favs", favs))
+    application.add_handler(CommandHandler("favorites", favs))
+    application.add_handler(CommandHandler("playfav", play_favorite))
+    application.add_handler(CommandHandler("delfav", delete_favorite))
     application.add_handler(
         CallbackQueryHandler(
             music_controls,
