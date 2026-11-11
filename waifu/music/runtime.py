@@ -349,6 +349,7 @@ async def _download_track(track: dict, chat_id: int) -> dict:
             source=track["source"],
             ytmusic_candidates=track.get("ytmusic_candidates"),
             fallback_query=track.get("search_query"),
+            expected_duration=track.get("expected_duration"),
         )
     except asyncio.TimeoutError as exc:
         raise RuntimeError("Audio preparation timed out. Please try the song again.") from exc
