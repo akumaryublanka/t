@@ -151,8 +151,13 @@ async def _send_chat_message(chat_id: int, text: str, reply_markup=None) -> None
 async def _send_now_playing(chat_id: int, track: dict) -> None:
     """Send an anime-style photo player card when a queued track starts."""
     artist = track.get("artist") or track.get("uploader") or "Unknown Artist"
+    heading = (
+        "🎬 <b>MIKASAVERSE · VIDEO IN VC</b>"
+        if track.get("media_type") == "video"
+        else "🎶 <b>MIKASAVERSE · NOW PLAYING</b>"
+    )
     caption = (
-        "🎶 <b>MIKASAVERSE · NOW PLAYING</b>\n"
+        f"{heading}\n"
         f"🎧 {escape(track.get('title', 'Unknown track'))}"
     )
     if artist and str(artist).strip().lower() not in str(track.get("title", "")).strip().lower():
