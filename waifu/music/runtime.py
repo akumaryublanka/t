@@ -10,11 +10,11 @@ from html import escape
 from pyrogram import Client as PyrogramClient
 from pytgcalls import PyTgCalls
 from pytgcalls import filters as call_filters
-from pytgcalls.types import AudioQuality, GroupCallConfig, MediaStream, StreamEnded
+from pytgcalls.types import AudioQuality, GroupCallConfig, MediaStream, StreamEnded, VideoQuality
 
 from waifu import application
 from waifu.music.config import get_music_credentials
-from waifu.music.downloader import download_track_sync
+from waifu.music.downloader import download_track_sync, download_video_sync
 from waifu.music.formatting import duration, player_keyboard
 from waifu.music.thumbnail import create_music_thumbnail
 
@@ -42,6 +42,7 @@ def _new_state() -> dict:
         "paused": False,
         "active_temp_dir": None,
         "active_path": None,
+        "active_kind": "audio",
         "generation": 0,
         "started_at": 0.0,
         "transitioning": False,
@@ -250,27 +251,73 @@ async def _ensure_chat_peer(chat_id: int) -> None:
 
 
 def _audio_stream(path: str) -> MediaStream:
+    """Create a stable 48 kHz stereo audio stream with timestamp correction."""
     return MediaStream(
         path,
         AudioQuality.HIGH,
         audio_flags=MediaStream.Flags.REQUIRED,
         video_flags=MediaStream.Flags.IGNORE,
-        # -re paces local files in real time; no video is sent to the call.
-        ffmpeg_parameters="-re",
+        ffmpeg_parameters=(
+            "-re -fflags +genpts "
+            "--audio -atmid -af aresample=48000:async=1:first_pts=0"
+        ),
     )
 
 
+def _video_stream(path: str) -> MediaStream:
+    """Create a 720p video+audio stream, paced in real time."""
+    return MediaStream(
+        path,
+        AudioQuality.HIGH,
+        VideoQuality.HD_720p,
+        audio_flags=MediaStream.Flags.REQUIRED,
+        video_flags=MediaStream.Flags.REQUIRED,
+        ffmpeg_parameters=(
+            "-re -fflags +genpts "
+            "--audio -atmid -af aresample=48000:async=1:first_pts=0"
+        ),
+    )
+
+
+def _media_stream(path: str, kind: str) -> MediaStream:
+    return _video_stream(path) if kind == "video" else _audio_stream(path)
+
+
 async def _download_track(track: dict, chat_id: int) -> dict:
+    """Download media with bounded waits so requests cannot hang a group forever."""
+    kind = track.get("media_type", "audio")
+    if kind == "video":
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(download_video_sync, track["source"]),
+                timeout=75,
+            )
+        except asyncio.TimeoutError as exc:
+            raise RuntimeError("Video preparation timed out. Try a shorter video or another link.") from exc
+
     try:
-        return await asyncio.to_thread(download_track_sync, track["source"])
+        return await asyncio.wait_for(
+            asyncio.to_thread(
+                download_track_sync,
+                track["source"],
+                ytmusic_candidates=track.get("ytmusic_candidates"),
+                fallback_query=track.get("search_query"),
+            ),
+            timeout=55,
+        )
+    except asyncio.TimeoutError as exc:
+        raise RuntimeError("Audio preparation timed out. Please try the song again.") from exc
     except Exception as source_error:
         title = (track.get("title") or "").strip()
-        if not title or title == track.get("source"):
-            LOGGER.warning("Primary source failed in chat %s: %s", chat_id, source_error)
+        if not title or title == track.get("source") or track.get("search_query"):
+            LOGGER.warning("Primary music source failed in chat %s: %s", chat_id, source_error)
             raise RuntimeError("This track is temporarily unavailable.") from source_error
         LOGGER.info("Primary source unavailable for '%s'; trying title search.", title)
         try:
-            return await asyncio.to_thread(download_track_sync, title)
+            return await asyncio.wait_for(
+                asyncio.to_thread(download_track_sync, title),
+                timeout=45,
+            )
         except Exception as fallback_error:
             LOGGER.warning("No alternate audio source for '%s': %s", title, fallback_error)
             raise RuntimeError("This track is temporarily unavailable.") from fallback_error
@@ -299,9 +346,10 @@ async def _start_track(chat_id: int, track: dict) -> None:
         if downloaded.get("duration") is not None:
             track["duration"] = downloaded["duration"]
 
+        media_kind = downloaded.get("media_type") or track.get("media_type", "audio")
         await _calls.play(
             chat_id,
-            _audio_stream(path),
+            _media_stream(path, media_kind),
             GroupCallConfig(auto_start=False),
         )
 
@@ -309,6 +357,7 @@ async def _start_track(chat_id: int, track: dict) -> None:
         state["current"] = track
         state["active_temp_dir"] = temp_dir
         state["active_path"] = path
+        state["active_kind"] = media_kind
         state["paused"] = False
         state["generation"] = int(state.get("generation", 0)) + 1
         state["started_at"] = asyncio.get_running_loop().time()
@@ -551,7 +600,7 @@ async def _recover_disconnected_chat(chat_id: int, generation: int, rejoin_group
 
             await _calls.play(
                 chat_id,
-                _audio_stream(path),
+                _media_stream(path, state.get("active_kind", "audio")),
                 GroupCallConfig(auto_start=False),
             )
             state["generation"] = generation + 1
@@ -696,7 +745,7 @@ async def start_music() -> None:
         await _music_client.start()
         _calls = PyTgCalls(_music_client)
 
-        @_calls.on_update(call_filters.stream_end())
+        @_calls.on_update(call_filters.stream_end(StreamEnded.Type.AUDIO))
         async def _stream_end_handler(client: PyTgCalls, event: StreamEnded):
             await _on_stream_end(client, event)
 
