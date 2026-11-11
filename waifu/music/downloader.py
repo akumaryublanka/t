@@ -536,6 +536,7 @@ def _download_ytmusic_audio(
     metadata = None
     selected = None
     video_id = None
+    preview_durations = []
     for candidate_id in candidates[:2]:
         try:
             candidate = ytm.get_song(
@@ -563,6 +564,7 @@ def _download_ytmusic_audio(
                     candidate_duration,
                     expected_duration,
                 )
+                preview_durations.append(candidate_duration)
                 continue
 
             formats = [
@@ -582,6 +584,11 @@ def _download_ytmusic_audio(
             LOGGER.info("YouTube Music candidate %s unavailable: %s", candidate_id, exc)
 
     if metadata is None or selected is None or video_id is None:
+        if preview_durations:
+            raise RuntimeError(
+                "Only a short preview was returned "
+                f"({max(preview_durations)} seconds); the full track is required."
+            )
         return None
 
     extension = ".m4a" if "audio/mp4" in selected.get("mimeType", "") else ".webm"
@@ -704,6 +711,7 @@ def download_track_sync(
     # SoundCloud/Vimeo URL as though it were a song title.
     if not is_url or is_youtube_url or ytmusic_candidates:
         ytm_temp_dir = tempfile.mkdtemp(prefix="mikasa-ytmusic-")
+        ytmusic_error = None
         try:
             ytmusic_audio = _download_ytmusic_audio(
                 source,
@@ -721,6 +729,7 @@ def download_track_sync(
                 return ytmusic_audio
             shutil.rmtree(ytm_temp_dir, ignore_errors=True)
         except Exception as exc:
+            ytmusic_error = exc
             shutil.rmtree(ytm_temp_dir, ignore_errors=True)
             LOGGER.warning("YouTube Music API playback path unavailable: %s", exc)
 
@@ -832,6 +841,8 @@ def download_track_sync(
             )
 
     detail = errors[-1] if errors else "No playable audio was found."
+    if ytmusic_error and "preview" in str(ytmusic_error).casefold():
+        detail = f"{ytmusic_error} SoundCloud fallback: {detail}"
     raise RuntimeError(
         "Could not prepare this track for voice-chat playback. " + detail[:280]
     )
