@@ -157,6 +157,10 @@ async def _add_tracks(
     status_message=None,
 ) -> None:
     chat_id = update.effective_chat.id
+    if not tracks:
+        if status_message:
+            await status_message.edit_text("🎵 No playable tracks were found.")
+        return
     requester = update.effective_user.first_name if update.effective_user else "Unknown"
     for track in tracks:
         track["requested_by"] = requester
@@ -239,7 +243,7 @@ async def play(update: Update, context: CallbackContext) -> None:
         return
 
     status = await update.effective_message.reply_text(
-        "🔎 <b>Finding your track…</b>",
+        "🔎 <b>Searching YouTube Music…</b>",
         parse_mode="HTML",
         disable_web_page_preview=True,
     )
@@ -253,7 +257,7 @@ async def play(update: Update, context: CallbackContext) -> None:
         if not tracks:
             track = await asyncio.wait_for(
                 asyncio.to_thread(extract_info_sync, query),
-                timeout=28,
+                timeout=20,
             )
             tracks = [track]
         await status.edit_text(
