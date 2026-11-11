@@ -164,7 +164,7 @@ async def _send_now_playing(chat_id: int, track: dict) -> None:
         image = await asyncio.to_thread(
             create_music_thumbnail,
             title=track.get("title", "Unknown track"),
-            artist=artist,
+            artist=track.get("artist") or track.get("uploader") or "Unknown Artist",
             artwork=track.get("thumbnail"),
             duration=track.get("duration"),
             requester=track.get("requested_by"),
