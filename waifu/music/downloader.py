@@ -43,6 +43,33 @@ def _extract(search: str) -> dict | None:
         }
 
 
+
+def _ytmusic_search(query: str) -> dict | None:
+    """Find a song and metadata through the public YouTube Music catalogue."""
+    try:
+        from ytmusicapi import YTMusic
+
+        client = YTMusic(language="en", location="IN")
+        results = client.search(query, filter="songs", limit=5)
+        for item in results:
+            video_id = item.get("videoId")
+            if not video_id or item.get("isAvailable") is False:
+                continue
+            artists = item.get("artists") or []
+            artist = ", ".join(a.get("name", "") for a in artists if a.get("name"))
+            title = item.get("title") or query
+            if artist:
+                title = f"{title} - {artist}"
+            return {
+                "source": f"https://www.youtube.com/watch?v={video_id}",
+                "title": title,
+                "duration": item.get("duration_seconds"),
+                "uploader": artist or None,
+            }
+    except Exception as exc:
+        LOGGER.info("YouTube Music catalogue search unavailable: %s", exc)
+    return None
+
 def extract_info_sync(query: str) -> dict:
     is_url = query.startswith(("http://", "https://"))
     if is_url:
@@ -58,7 +85,13 @@ def extract_info_sync(query: str) -> dict:
         )
 
     errors = []
-    # Try YouTube first, then SoundCloud if YouTube blocks anonymous extraction.
+    # YouTube Music provides a strong song catalogue/search fallback. It returns
+    # metadata and video IDs, not playable audio bytes; yt-dlp still prepares audio.
+    ytmusic_result = _ytmusic_search(query)
+    if ytmusic_result:
+        return ytmusic_result
+
+    # Keep yt-dlp and SoundCloud as fallbacks when the catalogue is unavailable.
     for search in (f"ytsearch1:{query}", f"scsearch1:{query}"):
         try:
             result = _extract(search)
