@@ -152,21 +152,12 @@ async def _send_chat_message(chat_id: int, text: str, reply_markup=None) -> None
 
 async def _send_now_playing(chat_id: int, track: dict) -> None:
     """Send the anime-style player card without delaying the queue transition."""
-    artist = track.get("artist") or track.get("uploader") or "Unknown Artist"
-    heading = (
-        "🎬 <b>MIKASAVERSE · VIDEO IN VC</b>"
-        if track.get("media_type") == "video"
-        else "🎶 <b>MIKASAVERSE · NOW PLAYING</b>"
-    )
+    heading = "🎬 <b>VIDEO STARTED STREAMING</b>" if track.get("media_type") == "video" else "➜ <b>STARTED STREAMING</b>"
     caption = (
-        f"{heading}\n"
-        f"🎧 {escape(track.get('title', 'Unknown track'))}"
-    )
-    if artist and str(artist).strip().lower() not in str(track.get("title", "")).strip().lower():
-        caption += f"\n🎤 {escape(str(artist))}"
-    caption += (
-        f"\n⏱️ {duration(track.get('duration'))}"
-        f"\n👤 Requested by {escape(track.get('requested_by', 'Unknown'))}"
+        f"{heading} |\n\n"
+        f"▸ <b>TITLE:</b> {escape(str(track.get('title') or 'Unknown Track'))}\n"
+        f"▸ <b>DURATION:</b> {duration(track.get('duration'))} MINUTES\n"
+        f"▸ <b>REQUESTED BY:</b> {escape(str(track.get('requested_by') or 'Unknown'))}"
     )
 
     async def send_card() -> None:
