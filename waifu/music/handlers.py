@@ -289,6 +289,11 @@ async def play(update: Update, context: CallbackContext) -> None:
                 "🌸 <b>Sirf short preview mila, full song nahi.</b>\n"
                 "Maine incomplete audio play nahi ki. Official full-song link try karo."
             )
+        elif "timed out" in error_text or "timeout" in error_text or "drm" in error_text:
+            user_text = (
+                "🌸 <b>Full song source abhi respond nahi kar raha.</b>\n"
+                "Thodi der baad retry karo, ya official full-song YouTube link bhejo."
+            )
         else:
             user_text = (
                 "🌸 <b>Ye track abhi play nahi ho pa raha.</b>\n"
