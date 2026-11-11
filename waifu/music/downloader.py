@@ -6,6 +6,10 @@ from yt_dlp import YoutubeDL
 
 LOGGER = logging.getLogger("waifu.music")
 
+# The signature timestamp changes periodically; cache it per worker process.
+_YT_SIGNATURE_TIMESTAMP: int | None = None
+_YT_SIGNATURE_TIMESTAMP_AT = 0.0
+
 
 def _best_thumbnail(info: dict | None) -> str | None:
     """Pick the largest usable thumbnail URL from yt-dlp/YouTube Music metadata."""
@@ -549,9 +553,25 @@ def _download_ytmusic_audio(
     if not candidates:
         return None
 
-    # get_song accepts a missing signature timestamp; skipping the extra
-    # signature request saves a round trip on every play.
-    signature_timestamp = None
+    # YouTube Music's get_song() requires the current signature timestamp
+    # for valid streaming URLs. The library's default can produce invalid URLs.
+    # Cache it for six hours so normal plays do not fetch base.js repeatedly.
+    import time
+
+    global _YT_SIGNATURE_TIMESTAMP, _YT_SIGNATURE_TIMESTAMP_AT
+    now = time.monotonic()
+    if (
+        _YT_SIGNATURE_TIMESTAMP is not None
+        and now - _YT_SIGNATURE_TIMESTAMP_AT < 6 * 60 * 60
+    ):
+        signature_timestamp = _YT_SIGNATURE_TIMESTAMP
+    else:
+        signature_timestamp = ytm.get_signatureTimestamp()
+        if not isinstance(signature_timestamp, int) or signature_timestamp <= 0:
+            raise RuntimeError("YouTube Music returned an invalid signature timestamp.")
+        _YT_SIGNATURE_TIMESTAMP = signature_timestamp
+        _YT_SIGNATURE_TIMESTAMP_AT = now
+        LOGGER.info("Refreshed YouTube Music streaming signature timestamp.")
 
     metadata = None
     selected = None
@@ -587,10 +607,20 @@ def _download_ytmusic_audio(
                 preview_durations.append(candidate_duration)
                 continue
 
+            streaming_data = candidate.get("streamingData") or {}
+            adaptive_formats = streaming_data.get("adaptiveFormats") or []
             formats = [
-                item for item in (candidate.get("streamingData") or {}).get("adaptiveFormats", [])
+                item for item in adaptive_formats
                 if item.get("url") and item.get("mimeType", "").startswith("audio/")
             ]
+            LOGGER.info(
+                "YouTube Music candidate %s: status=%s, duration=%s, adaptive_formats=%s, playable_audio_formats=%s.",
+                candidate_id,
+                status or "unknown",
+                candidate_duration or "unknown",
+                len(adaptive_formats),
+                len(formats),
+            )
             if not formats:
                 continue
             selected = max(
@@ -752,6 +782,14 @@ def download_track_sync(
             ytmusic_error = exc
             shutil.rmtree(ytm_temp_dir, ignore_errors=True)
             LOGGER.warning("YouTube Music API playback path unavailable: %s", exc)
+
+        # Do not silently replace the known official Bairan upload with a
+        # random SoundCloud preview if YouTube Music did not expose full audio.
+        if _youtube_video_id(source) == "kyqJ_FId-_w":
+            reason = str(ytmusic_error) if ytmusic_error else "No playable full-length audio formats were returned."
+            raise RuntimeError(
+                "Official Bairan audio could not be extracted from YouTube Music. " + reason[:220]
+            ) from ytmusic_error
 
         if ytmusic_error and "preview" in str(ytmusic_error).casefold():
             raise RuntimeError(
