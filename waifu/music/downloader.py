@@ -123,8 +123,129 @@ def stream_url_sync(source: str) -> str:
 
 
 
+
+def _youtube_video_id(source: str) -> str | None:
+    """Extract a YouTube video ID from a watch, music, or short URL."""
+    from urllib.parse import parse_qs, urlparse
+
+    try:
+        parsed = urlparse(source)
+        host = parsed.netloc.lower().split(":", 1)[0]
+        if host in {"youtu.be", "www.youtu.be"}:
+            return parsed.path.strip("/").split("/", 1)[0] or None
+        if host.endswith("youtube.com") or host.endswith("youtube-nocookie.com"):
+            query = parse_qs(parsed.query)
+            if query.get("v"):
+                return query["v"][0]
+            parts = [part for part in parsed.path.split("/") if part]
+            if len(parts) >= 2 and parts[0] in {"shorts", "embed", "live"}:
+                return parts[1]
+    except Exception:
+        return None
+    return None
+
+
+def _download_ytmusic_audio(source: str, temp_dir: str, max_bytes: int) -> dict | None:
+    """Resolve and download a YouTube Music audio format using ytmusicapi.
+
+    YTMusic.get_song() returns streamingData.adaptiveFormats; this consumes
+    the audio-only URL supplied by that API instead of asking yt-dlp to
+    authenticate against YouTube. The returned file is still decoded by
+    FFmpeg/PyTgCalls in the existing voice-chat runtime.
+    """
+    import os
+    import re
+    import requests
+    from ytmusicapi import YTMusic
+
+    ytm = YTMusic(language="en", location="IN")
+    video_id = _youtube_video_id(source)
+    selected = None
+
+    if video_id:
+        metadata = ytm.get_song(video_id)
+    else:
+        results = ytm.search(source, filter="songs", limit=5)
+        metadata = None
+        for result in results:
+            candidate_id = result.get("videoId")
+            if candidate_id and result.get("isAvailable") is not False:
+                try:
+                    candidate = ytm.get_song(candidate_id)
+                    formats = (candidate.get("streamingData") or {}).get("adaptiveFormats") or []
+                    if any(item.get("url") and item.get("mimeType", "").startswith("audio/") for item in formats):
+                        metadata = candidate
+                        video_id = candidate_id
+                        break
+                except Exception as exc:
+                    LOGGER.info("YouTube Music candidate unavailable: %s", exc)
+        if metadata is None:
+            return None
+
+    status = (metadata.get("playabilityStatus") or {}).get("status")
+    if status not in (None, "OK"):
+        raise RuntimeError("YouTube Music says this track is not playable.")
+
+    streaming = metadata.get("streamingData") or {}
+    formats = [
+        item for item in streaming.get("adaptiveFormats", [])
+        if item.get("url") and item.get("mimeType", "").startswith("audio/")
+    ]
+    if not formats:
+        return None
+
+    # Prefer a high-bitrate audio-only representation; URLs are short-lived,
+    # so retrieve the bytes immediately after get_song().
+    selected = max(
+        formats,
+        key=lambda item: int(item.get("averageBitrate") or item.get("bitrate") or 0),
+    )
+    stream_url = selected["url"]
+    extension = ".m4a" if "audio/mp4" in selected.get("mimeType", "") else ".webm"
+    audio_path = os.path.join(temp_dir, f"{video_id}{extension}")
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+    }
+    written = 0
+    with requests.get(stream_url, headers=headers, stream=True, timeout=(15, 45)) as response:
+        response.raise_for_status()
+        declared_size = int(response.headers.get("Content-Length") or 0)
+        if declared_size > max_bytes:
+            raise ValueError("The audio file is too large for safe voice-chat playback.")
+        with open(audio_path, "wb") as output:
+            for chunk in response.iter_content(chunk_size=256 * 1024):
+                if not chunk:
+                    continue
+                written += len(chunk)
+                if written > max_bytes:
+                    raise ValueError("The audio file is too large for safe voice-chat playback.")
+                output.write(chunk)
+
+    if written <= 0:
+        raise RuntimeError("YouTube Music returned an empty audio stream.")
+
+    details = metadata.get("videoDetails") or {}
+    title = details.get("title") or source
+    duration_text = details.get("lengthSeconds")
+    try:
+        duration = int(duration_text) if duration_text else None
+    except (TypeError, ValueError):
+        duration = None
+
+    return {
+        "path": audio_path,
+        "title": title,
+        "duration": duration,
+        "uploader": details.get("author"),
+        "source": f"https://music.youtube.com/watch?v={video_id}",
+        "mime_type": selected.get("mimeType"),
+    }
+
 def download_track_sync(source: str, max_bytes: int = 80 * 1024 * 1024) -> dict:
-    """Download original audio to a temporary local file for VC playback."""
+    """Download audio for VC playback: YouTube Music API first, then yt-dlp."""
     import glob
     import os
     import shutil
@@ -132,6 +253,22 @@ def download_track_sync(source: str, max_bytes: int = 80 * 1024 * 1024) -> dict:
 
     if not source or len(source) > 2000:
         raise ValueError("A valid song source is required.")
+
+    # The ytmusicapi path returns an audio-only adaptive format URL via
+    # get_song(). This is the primary YouTube path; no browser cookies needed.
+    ytm_temp_dir = tempfile.mkdtemp(prefix="mikasa-ytmusic-")
+    try:
+        ytmusic_audio = _download_ytmusic_audio(source, ytm_temp_dir, max_bytes)
+        if ytmusic_audio:
+            ytmusic_audio["temp_dir"] = ytm_temp_dir
+            LOGGER.info("Prepared voice-chat audio through YouTube Music API: %s",
+                        ytmusic_audio.get("title", "Unknown track"))
+            return ytmusic_audio
+        shutil.rmtree(ytm_temp_dir, ignore_errors=True)
+    except Exception as exc:
+        shutil.rmtree(ytm_temp_dir, ignore_errors=True)
+        LOGGER.warning("YouTube Music API playback path unavailable: %s", exc)
+
     is_url = source.startswith(("http://", "https://"))
     searches = [source] if is_url else [f"ytsearch1:{source}", f"scsearch1:{source}"]
     errors = []
@@ -180,9 +317,11 @@ def download_track_sync(source: str, max_bytes: int = 80 * 1024 * 1024) -> dict:
             shutil.rmtree(temp_dir, ignore_errors=True)
             LOGGER.warning("VC audio download failed for %s: %s",
                            search.split(":", 1)[0] if ":" in search else "direct URL", exc)
+
     detail = errors[-1] if errors else "No playable audio was found."
-    raise RuntimeError("Could not prepare this track for voice-chat playback. "
-                       "Try another song or a SoundCloud link. " + detail[:280])
+    raise RuntimeError(
+        "Could not prepare this track for voice-chat playback. " + detail[:280]
+    )
 
 def extract_playlist_sync(query: str, max_tracks: int = 20) -> list[dict]:
     """Return a bounded list of flat playlist entries without downloading media."""
