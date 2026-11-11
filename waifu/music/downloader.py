@@ -80,58 +80,45 @@ def _extract(search: str) -> dict | None:
 
 
 def _ytmusic_search(query: str) -> dict | None:
-    """Find a YouTube Music result only after confirming it has playable audio."""
+    """Resolve a quick catalogue result; audio availability is checked at download time."""
     try:
+        import requests
+        from functools import partial
         from ytmusicapi import YTMusic
 
-        client = YTMusic(language="en", location="IN")
-        results = client.search(query, filter="songs", limit=10)
-        try:
-            signature_timestamp = client.get_signatureTimestamp()
-        except Exception as exc:
-            LOGGER.info("YouTube Music signature timestamp unavailable: %s", exc)
-            signature_timestamp = None
+        session = requests.Session()
+        session.request = partial(session.request, timeout=(4, 10))
+        client = YTMusic(
+            language="en",
+            location="IN",
+            requests_session=session,
+        )
+        results = client.search(query, filter="songs", limit=8)
+        candidates = [
+            item for item in results
+            if item.get("videoId") and item.get("isAvailable") is not False
+        ]
+        if not candidates:
+            return None
 
-        for item in results:
-            video_id = item.get("videoId")
-            if not video_id or item.get("isAvailable") is False:
-                continue
-            try:
-                song = client.get_song(
-                    video_id,
-                    signatureTimestamp=signature_timestamp,
-                )
-                status = (song.get("playabilityStatus") or {}).get("status")
-                if status not in (None, "OK"):
-                    continue
-                formats = (song.get("streamingData") or {}).get("adaptiveFormats") or []
-                playable_audio = any(
-                    entry.get("url")
-                    and entry.get("mimeType", "").startswith("audio/")
-                    for entry in formats
-                )
-                if not playable_audio:
-                    continue
-            except Exception as exc:
-                LOGGER.debug("Skipping unplayable YouTube Music result %s: %s", video_id, exc)
-                continue
-
-            artists = item.get("artists") or []
-            artist = ", ".join(
-                artist_item.get("name", "")
-                for artist_item in artists
-                if artist_item.get("name")
-            )
-            thumbnails = item.get("thumbnails") or []
-            thumbnail = _best_thumbnail({"thumbnails": thumbnails})
-            return {
-                "source": f"https://music.youtube.com/watch?v={video_id}",
-                "title": item.get("title") or query,
-                "duration": item.get("duration_seconds"),
-                "artist": artist or None,
-                "uploader": artist or None,
-                "thumbnail": thumbnail,
-            }
+        first = candidates[0]
+        artists = first.get("artists") or []
+        artist = ", ".join(
+            artist_item.get("name", "")
+            for artist_item in artists
+            if artist_item.get("name")
+        )
+        title = first.get("title") or query
+        if artist:
+            title = f"{title} - {artist}"
+        return {
+            "source": f"https://music.youtube.com/watch?v={first['videoId']}",
+            "title": title,
+            "duration": first.get("duration_seconds"),
+            "uploader": artist or None,
+            "ytmusic_candidates": [item["videoId"] for item in candidates[:5]],
+            "search_query": query,
+        }
     except Exception as exc:
         LOGGER.info("YouTube Music catalogue search unavailable: %s", exc)
     return None
@@ -211,94 +198,96 @@ def _youtube_video_id(source: str) -> str | None:
     return None
 
 
-def _download_ytmusic_audio(source: str, temp_dir: str, max_bytes: int) -> dict | None:
-    """Resolve and download a YouTube Music audio format using ytmusicapi.
-
-    YTMusic.get_song() returns streamingData.adaptiveFormats; this consumes
-    the audio-only URL supplied by that API instead of asking yt-dlp to
-    authenticate against YouTube. The returned file is still decoded by
-    FFmpeg/PyTgCalls in the existing voice-chat runtime.
-    """
+def _download_ytmusic_audio(
+    source: str,
+    temp_dir: str,
+    max_bytes: int,
+    candidate_ids: list[str] | None = None,
+) -> dict | None:
+    """Download the best available audio format using ytmusicapi."""
     import os
-    import re
     import requests
+    from functools import partial
     from ytmusicapi import YTMusic
 
-    ytm = YTMusic(language="en", location="IN")
-    video_id = _youtube_video_id(source)
-    selected = None
+    session = requests.Session()
+    session.request = partial(session.request, timeout=(4, 12))
+    ytm = YTMusic(language="en", location="IN", requests_session=session)
 
-    # YouTube's signed audio URLs can be invalid when ytmusicapi uses its
-    # fallback signature timestamp. Fetch the current value before get_song.
-    # If YouTube changes the base.js endpoint temporarily, retain the library
-    # fallback rather than disabling playback altogether.
+    direct_id = _youtube_video_id(source)
+    candidates = list(candidate_ids or [])
+    if direct_id and direct_id not in candidates:
+        candidates.insert(0, direct_id)
+    if not candidates and not direct_id:
+        results = ytm.search(source, filter="songs", limit=5)
+        candidates = [
+            item["videoId"] for item in results
+            if item.get("videoId") and item.get("isAvailable") is not False
+        ]
+
+    if not candidates:
+        return None
+
     try:
         signature_timestamp = ytm.get_signatureTimestamp()
     except Exception as exc:
-        LOGGER.warning("Could not refresh YouTube signature timestamp: %s", exc)
+        LOGGER.info("YouTube Music signature timestamp unavailable: %s", exc)
         signature_timestamp = None
 
-    def get_song_with_fresh_signature(candidate_id: str) -> dict:
-        return ytm.get_song(candidate_id, signatureTimestamp=signature_timestamp)
+    metadata = None
+    selected = None
+    video_id = None
+    for candidate_id in candidates[:5]:
+        try:
+            candidate = ytm.get_song(
+                candidate_id,
+                signatureTimestamp=signature_timestamp,
+            )
+            status = (candidate.get("playabilityStatus") or {}).get("status")
+            if status not in (None, "OK"):
+                LOGGER.debug("YouTube Music candidate %s is not playable.", candidate_id)
+                continue
+            formats = [
+                item for item in (candidate.get("streamingData") or {}).get("adaptiveFormats", [])
+                if item.get("url") and item.get("mimeType", "").startswith("audio/")
+            ]
+            if not formats:
+                continue
+            selected = max(
+                formats,
+                key=lambda item: int(item.get("averageBitrate") or item.get("bitrate") or 0),
+            )
+            metadata = candidate
+            video_id = candidate_id
+            break
+        except Exception as exc:
+            LOGGER.info("YouTube Music candidate %s unavailable: %s", candidate_id, exc)
 
-    if video_id:
-        metadata = get_song_with_fresh_signature(video_id)
-    else:
-        results = ytm.search(source, filter="songs", limit=5)
-        metadata = None
-        for result in results:
-            candidate_id = result.get("videoId")
-            if candidate_id and result.get("isAvailable") is not False:
-                try:
-                    candidate = get_song_with_fresh_signature(candidate_id)
-                    formats = (candidate.get("streamingData") or {}).get("adaptiveFormats") or []
-                    if any(item.get("url") and item.get("mimeType", "").startswith("audio/") for item in formats):
-                        metadata = candidate
-                        video_id = candidate_id
-                        break
-                except Exception as exc:
-                    LOGGER.info("YouTube Music candidate unavailable: %s", exc)
-        if metadata is None:
-            return None
-
-    status = (metadata.get("playabilityStatus") or {}).get("status")
-    if status not in (None, "OK"):
-        raise RuntimeError("YouTube Music says this track is not playable.")
-
-    streaming = metadata.get("streamingData") or {}
-    formats = [
-        item for item in streaming.get("adaptiveFormats", [])
-        if item.get("url") and item.get("mimeType", "").startswith("audio/")
-    ]
-    if not formats:
+    if metadata is None or selected is None or video_id is None:
         return None
 
-    # Prefer a high-bitrate audio-only representation; URLs are short-lived,
-    # so retrieve the bytes immediately after get_song().
-    selected = max(
-        formats,
-        key=lambda item: int(item.get("averageBitrate") or item.get("bitrate") or 0),
-    )
-    stream_url = selected["url"]
     extension = ".m4a" if "audio/mp4" in selected.get("mimeType", "") else ".webm"
     audio_path = os.path.join(temp_dir, f"{video_id}{extension}")
-
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                      "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "*/*",
     }
     written = 0
-    with requests.get(stream_url, headers=headers, stream=True, timeout=(15, 45)) as response:
+    with requests.get(
+        selected["url"],
+        headers=headers,
+        stream=True,
+        timeout=(8, 25),
+    ) as response:
         response.raise_for_status()
-        content_type = response.headers.get("Content-Type", "").lower()
-        if "text/html" in content_type:
+        if "text/html" in response.headers.get("Content-Type", "").lower():
             raise RuntimeError("YouTube Music returned a web page instead of audio.")
         declared_size = int(response.headers.get("Content-Length") or 0)
         if declared_size > max_bytes:
             raise ValueError("The audio file is too large for safe voice-chat playback.")
         with open(audio_path, "wb") as output:
-            for chunk in response.iter_content(chunk_size=256 * 1024):
+            for chunk in response.iter_content(chunk_size=512 * 1024):
                 if not chunk:
                     continue
                 written += len(chunk)
@@ -311,22 +300,27 @@ def _download_ytmusic_audio(source: str, temp_dir: str, max_bytes: int) -> dict 
 
     details = metadata.get("videoDetails") or {}
     title = details.get("title") or source
-    duration_text = details.get("lengthSeconds")
+    raw_duration = details.get("lengthSeconds")
     try:
-        duration = int(duration_text) if duration_text else None
+        track_duration = int(raw_duration) if raw_duration else None
     except (TypeError, ValueError):
-        duration = None
+        track_duration = None
 
     return {
         "path": audio_path,
         "title": title,
-        "duration": duration,
+        "duration": track_duration,
         "uploader": details.get("author"),
         "source": f"https://music.youtube.com/watch?v={video_id}",
         "mime_type": selected.get("mimeType"),
     }
 
-def download_track_sync(source: str, max_bytes: int = 80 * 1024 * 1024) -> dict:
+def download_track_sync(
+    source: str,
+    max_bytes: int = 80 * 1024 * 1024,
+    ytmusic_candidates: list[str] | None = None,
+    fallback_query: str | None = None,
+) -> dict:
     """Download audio for VC playback: YouTube Music API first, then yt-dlp."""
     import glob
     import os
@@ -340,7 +334,7 @@ def download_track_sync(source: str, max_bytes: int = 80 * 1024 * 1024) -> dict:
     # get_song(). This is the primary YouTube path; no browser cookies needed.
     ytm_temp_dir = tempfile.mkdtemp(prefix="mikasa-ytmusic-")
     try:
-        ytmusic_audio = _download_ytmusic_audio(source, ytm_temp_dir, max_bytes)
+        ytmusic_audio = _download_ytmusic_audio(source, ytm_temp_dir, max_bytes, ytmusic_candidates)
         if ytmusic_audio:
             ytmusic_audio["temp_dir"] = ytm_temp_dir
             LOGGER.info("Prepared voice-chat audio through YouTube Music API: %s",
@@ -352,7 +346,10 @@ def download_track_sync(source: str, max_bytes: int = 80 * 1024 * 1024) -> dict:
         LOGGER.warning("YouTube Music API playback path unavailable: %s", exc)
 
     is_url = source.startswith(("http://", "https://"))
-    searches = [source] if is_url else [f"ytsearch1:{source}", f"scsearch1:{source}"]
+    if fallback_query:
+        searches = [f"ytsearch1:{fallback_query}", f"scsearch1:{fallback_query}"]
+    else:
+        searches = [source] if is_url else [f"ytsearch1:{source}", f"scsearch1:{source}"]
     errors = []
     for search in searches:
         temp_dir = tempfile.mkdtemp(prefix="mikasa-vc-")
@@ -404,6 +401,89 @@ def download_track_sync(source: str, max_bytes: int = 80 * 1024 * 1024) -> dict:
     raise RuntimeError(
         "Could not prepare this track for voice-chat playback. " + detail[:280]
     )
+
+
+def download_video_sync(
+    source: str,
+    max_bytes: int = 72 * 1024 * 1024,
+    max_duration: int = 600,
+) -> dict:
+    """Download one video with audio for Telegram group voice-chat playback."""
+    import glob
+    import os
+    import shutil
+    import tempfile
+
+    if not source or len(source) > 1000:
+        raise ValueError("Provide a valid video title or link.")
+
+    is_url = source.startswith(("http://", "https://"))
+    searches = [source] if is_url else [f"ytsearch1:{source}"]
+    errors = []
+
+    for search in searches:
+        temp_dir = tempfile.mkdtemp(prefix="mikasa-vplay-")
+        options = {
+            **_youtube_options(),
+            "format": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+            "skip_download": False,
+            "noplaylist": True,
+            "playlist_items": "1",
+            "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
+            "merge_output_format": "mp4",
+            "max_filesize": max_bytes,
+            "socket_timeout": 15,
+            "retries": 1,
+            "fragment_retries": 2,
+            "concurrent_fragment_downloads": 4,
+            "overwrites": True,
+        }
+        try:
+            with YoutubeDL(options) as ydl:
+                info = ydl.extract_info(search, download=True)
+            if info and info.get("entries"):
+                info = next((entry for entry in info["entries"] if entry), None)
+            if not info:
+                raise RuntimeError("No video result was returned.")
+
+            raw_duration = info.get("duration")
+            video_duration = int(raw_duration) if raw_duration else None
+            if video_duration and video_duration > max_duration:
+                raise ValueError(
+                    f"Video is too long. The VC video limit is {max_duration // 60} minutes."
+                )
+
+            allowed = {".mp4", ".mkv", ".webm", ".mov", ".m4v"}
+            files = [
+                path for path in glob.glob(os.path.join(temp_dir, "*"))
+                if os.path.isfile(path)
+                and os.path.splitext(path)[1].lower() in allowed
+                and not path.endswith(".part")
+            ]
+            if not files:
+                raise RuntimeError("The downloader did not produce a playable video.")
+            video_path = max(files, key=os.path.getsize)
+            size = os.path.getsize(video_path)
+            if size <= 0 or size > max_bytes:
+                raise ValueError("Video is empty or too large for safe VC playback.")
+
+            return {
+                "path": video_path,
+                "temp_dir": temp_dir,
+                "title": info.get("title") or "Video",
+                "duration": video_duration,
+                "uploader": info.get("uploader") or info.get("channel"),
+                "source": info.get("webpage_url") or source,
+                "media_type": "video",
+            }
+        except Exception as exc:
+            errors.append(str(exc))
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            LOGGER.warning("VC video download failed: %s", exc)
+
+    detail = errors[-1] if errors else "No playable video was found."
+    raise RuntimeError("Could not prepare this video for voice-chat playback. " + detail[:240])
+
 
 def extract_playlist_sync(query: str, max_tracks: int = 20) -> list[dict]:
     """Return a bounded list of flat playlist entries without downloading media."""
