@@ -113,8 +113,20 @@ def _youtube_result_score(query: str, item: dict) -> int:
     if not query_tokens:
         return 0
 
-    matched = len(query_tokens & combined_tokens)
-    score = int(100 * matched / len(query_tokens))
+    # Match close spellings too (e.g. "Banjaare" vs "Banjaree").
+    import difflib
+
+    matched_tokens = 0
+    for token in query_tokens:
+        if token in combined_tokens:
+            matched_tokens += 1
+            continue
+        if any(
+            difflib.SequenceMatcher(None, token, candidate).ratio() >= 0.78
+            for candidate in combined_tokens
+        ):
+            matched_tokens += 1
+    score = int(100 * matched_tokens / len(query_tokens))
     if title_text == query_text:
         score += 70
     elif title_text.startswith(query_text):
@@ -184,11 +196,13 @@ def _ytmusic_search(query: str) -> dict | None:
 
         # Bairan's official original recording is by Banjaare. Put its official
         # music video first so a remix cannot win merely because it trends higher.
-        if _normalise_search_text(query) == "bairan":
+        if _normalise_search_text(query) in {"bairan", "bairan banjaree", "bairan banjaare"}:
+            # Official full-length audio upload (the animated video is a separate result).
             official = {
-                "videoId": "oafxkMv4xnc",
+                "videoId": "kyqJ_FId-_w",
                 "title": "Bairan",
                 "artists": [{"name": "Banjaare"}],
+                "duration_seconds": 150,
                 "isAvailable": True,
             }
             candidates = [official] + [
@@ -197,7 +211,7 @@ def _ytmusic_search(query: str) -> dict | None:
 
         if not candidates:
             return None
-        if _normalise_search_text(query) != "bairan":
+        if _normalise_search_text(query) not in {"bairan", "bairan banjaree", "bairan banjaare"}:
             best_score = _youtube_result_score(query, candidates[0])
             if best_score < 70:
                 LOGGER.info(
@@ -223,6 +237,7 @@ def _ytmusic_search(query: str) -> dict | None:
             "thumbnail": _best_thumbnail(first),
             "ytmusic_candidates": [item["videoId"] for item in candidates[:3]],
             "search_query": query,
+            "expected_duration": first.get("duration_seconds"),
         }
     except Exception as exc:
         LOGGER.info("YouTube Music catalogue search unavailable: %s", exc)
@@ -488,6 +503,7 @@ def _download_ytmusic_audio(
     temp_dir: str,
     max_bytes: int,
     candidate_ids: list[str] | None = None,
+    expected_duration: int | None = None,
 ) -> dict | None:
     """Download the best available audio format using ytmusicapi."""
     import os
@@ -530,6 +546,25 @@ def _download_ytmusic_audio(
             if status not in (None, "OK"):
                 LOGGER.debug("YouTube Music candidate %s is not playable.", candidate_id)
                 continue
+            candidate_details = candidate.get("videoDetails") or {}
+            raw_candidate_duration = candidate_details.get("lengthSeconds")
+            try:
+                candidate_duration = int(raw_candidate_duration) if raw_candidate_duration else None
+            except (TypeError, ValueError):
+                candidate_duration = None
+            if (
+                expected_duration
+                and candidate_duration
+                and candidate_duration < max(60, int(expected_duration * 0.75))
+            ):
+                LOGGER.warning(
+                    "Skipping short YouTube Music preview %s (%ss; expected about %ss).",
+                    candidate_id,
+                    candidate_duration,
+                    expected_duration,
+                )
+                continue
+
             formats = [
                 item for item in (candidate.get("streamingData") or {}).get("adaptiveFormats", [])
                 if item.get("url") and item.get("mimeType", "").startswith("audio/")
@@ -582,8 +617,53 @@ def _download_ytmusic_audio(
         raise RuntimeError("YouTube Music returned an empty audio stream.")
 
     details = metadata.get("videoDetails") or {}
+    probed_duration = None
+    try:
+        import shutil
+        import subprocess
+
+        ffprobe = shutil.which("ffprobe")
+        if ffprobe:
+            probe = subprocess.run(
+                [
+                    ffprobe, "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    audio_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=6,
+                check=False,
+            )
+            if probe.returncode == 0 and probe.stdout.strip():
+                probed_duration = int(float(probe.stdout.strip()))
+    except Exception:
+        LOGGER.debug("Could not verify downloaded audio duration.", exc_info=True)
+
+    raw_meta_duration = details.get("lengthSeconds")
+    try:
+        metadata_duration = int(raw_meta_duration) if raw_meta_duration else None
+    except (TypeError, ValueError):
+        metadata_duration = None
+
+    actual_duration = probed_duration or metadata_duration
+    if (
+        expected_duration
+        and actual_duration
+        and actual_duration < max(60, int(expected_duration * 0.75))
+    ):
+        try:
+            os.remove(audio_path)
+        except OSError:
+            pass
+        raise RuntimeError(
+            f"Only a {actual_duration}-second preview was returned; "
+            f"the full {expected_duration}-second track is required."
+        )
+
     title = details.get("title") or source
-    raw_duration = details.get("lengthSeconds")
+    raw_duration = probed_duration or details.get("lengthSeconds") or expected_duration
     try:
         track_duration = int(raw_duration) if raw_duration else None
     except (TypeError, ValueError):
@@ -607,6 +687,7 @@ def download_track_sync(
     max_bytes: int = 80 * 1024 * 1024,
     ytmusic_candidates: list[str] | None = None,
     fallback_query: str | None = None,
+    expected_duration: int | None = None,
 ) -> dict:
     """Download audio for VC playback: YouTube Music API first, ranked fallbacks second."""
     import glob
@@ -629,6 +710,7 @@ def download_track_sync(
                 ytm_temp_dir,
                 max_bytes,
                 ytmusic_candidates,
+                expected_duration,
             )
             if ytmusic_audio:
                 ytmusic_audio["temp_dir"] = ytm_temp_dir
