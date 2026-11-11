@@ -345,6 +345,9 @@ async def _start_track(chat_id: int, track: dict) -> None:
             track["title"] = downloaded["title"]
         if downloaded.get("duration") is not None:
             track["duration"] = downloaded["duration"]
+        for key in ("artist", "uploader", "thumbnail"):
+            if downloaded.get(key):
+                track[key] = downloaded[key]
 
         media_kind = downloaded.get("media_type") or track.get("media_type", "audio")
         await _calls.play(
