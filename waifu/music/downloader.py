@@ -51,9 +51,9 @@ def _youtube_options() -> dict:
         "no_warnings": True,
         "skip_download": True,
         "extract_flat": False,
-        "socket_timeout": 12,
-        "retries": 1,
-        "fragment_retries": 2,
+        "socket_timeout": 7,
+        "retries": 0,
+        "fragment_retries": 1,
         "concurrent_fragment_downloads": 3,
         "extractor_args": {
             "youtube": {
@@ -173,13 +173,13 @@ def _ytmusic_search(query: str) -> dict | None:
         from ytmusicapi import YTMusic
 
         session = requests.Session()
-        session.request = partial(session.request, timeout=(4, 10))
+        session.request = partial(session.request, timeout=(3, 7))
         client = YTMusic(
             language="en",
             location="IN",
             requests_session=session,
         )
-        results = client.search(query, filter="songs", limit=15)
+        results = client.search(query, filter="songs", limit=8)
         candidates = _rank_youtube_results(query, results or [])
 
         # Bairan's official original recording is by Banjaare. Put its official
@@ -221,7 +221,7 @@ def _ytmusic_search(query: str) -> dict | None:
             "artist": artist or None,
             "uploader": artist or None,
             "thumbnail": _best_thumbnail(first),
-            "ytmusic_candidates": [item["videoId"] for item in candidates[:8]],
+            "ytmusic_candidates": [item["videoId"] for item in candidates[:3]],
             "search_query": query,
         }
     except Exception as exc:
@@ -311,8 +311,9 @@ def extract_info_sync(query: str) -> dict:
     if ytmusic_result:
         return ytmusic_result
 
-    # Keep yt-dlp and SoundCloud as fallbacks when the catalogue is unavailable.
-    for search in (f"ytsearch8:{query}", f"scsearch8:{query}"):
+    # YouTube title extraction is frequently bot-gated on cloud hosts. YT Music
+    # already searched the YouTube catalogue, so use SoundCloud as the fast fallback.
+    for search in (f"scsearch5:{query}",):
         try:
             result = _extract_ranked_search(search, query)
             if result:
@@ -495,7 +496,7 @@ def _download_ytmusic_audio(
     from ytmusicapi import YTMusic
 
     session = requests.Session()
-    session.request = partial(session.request, timeout=(4, 12))
+    session.request = partial(session.request, timeout=(3, 7))
     ytm = YTMusic(language="en", location="IN", requests_session=session)
 
     direct_id = _youtube_video_id(source)
@@ -512,16 +513,14 @@ def _download_ytmusic_audio(
     if not candidates:
         return None
 
-    try:
-        signature_timestamp = ytm.get_signatureTimestamp()
-    except Exception as exc:
-        LOGGER.info("YouTube Music signature timestamp unavailable: %s", exc)
-        signature_timestamp = None
+    # get_song accepts a missing signature timestamp; skipping the extra
+    # signature request saves a round trip on every play.
+    signature_timestamp = None
 
     metadata = None
     selected = None
     video_id = None
-    for candidate_id in candidates[:4]:
+    for candidate_id in candidates[:2]:
         try:
             candidate = ytm.get_song(
                 candidate_id,
@@ -562,7 +561,7 @@ def _download_ytmusic_audio(
         selected["url"],
         headers=headers,
         stream=True,
-        timeout=(8, 25),
+        timeout=(4, 12),
     ) as response:
         response.raise_for_status()
         if "text/html" in response.headers.get("Content-Type", "").lower():
@@ -645,7 +644,7 @@ def download_track_sync(
 
     query = fallback_query or (None if is_url else source)
     searches = (
-        [(f"ytsearch8:{query}", query), (f"scsearch8:{query}", query)]
+        [(f"scsearch5:{query}", query)]
         if query else [(source, None)]
     )
     errors = []
