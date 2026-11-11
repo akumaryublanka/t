@@ -477,12 +477,49 @@ def _ytmusic_video_search(query: str, limit: int = 5) -> list[dict]:
         return []
 
 
+def _youtube_video_options(player_client: str | None = None) -> dict:
+    """Build video options with progressive and DASH format fallbacks."""
+    import shutil
+
+    options = {
+        **_youtube_options(),
+        # Prefer a compact progressive file; fall back to separate DASH video/audio.
+        "format": (
+            "best[height<=480]/"
+            "bestvideo[height<=480]+bestaudio/"
+            "best[height<=720]/"
+            "bestvideo+bestaudio/best"
+        ),
+        "skip_download": False,
+        "noplaylist": True,
+        "socket_timeout": 15,
+        "retries": 1,
+        "fragment_retries": 2,
+        "concurrent_fragment_downloads": 2,
+    }
+    if player_client:
+        options["extractor_args"] = {
+            "youtube": {"player_client": [player_client]}
+        }
+
+    # Render's base Python image may not provide a system ffmpeg executable.
+    # imageio-ffmpeg bundles one so yt-dlp can merge DASH streams when needed.
+    try:
+        import imageio_ffmpeg
+        options["ffmpeg_location"] = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        system_ffmpeg = shutil.which("ffmpeg")
+        if system_ffmpeg:
+            options["ffmpeg_location"] = system_ffmpeg
+    return options
+
+
 def download_video_sync(
     source: str,
     max_bytes: int = 72 * 1024 * 1024,
     max_duration: int = 600,
 ) -> dict:
-    """Download a short video for VC playback, using YT Music to resolve title searches."""
+    """Download a short video for VC playback using resilient YouTube clients."""
     import glob
     import os
     import shutil
@@ -492,19 +529,22 @@ def download_video_sync(
         raise ValueError("Provide a valid video title or link.")
 
     is_url = source.startswith(("http://", "https://"))
-    candidates = []
     if is_url:
         video_id = _youtube_video_id(source)
         candidates = [{
             "id": video_id,
+            "url": source,
             "title": source,
             "artist": None,
             "thumbnail": None,
             "duration": None,
-        }] if video_id else [{"url": source, "title": source}]
+        }] if video_id else [{
+            "url": source,
+            "title": source,
+        }]
     else:
-        candidates = _ytmusic_video_search(source)
-        # Keep a yt-dlp search fallback only if the catalogue API is unavailable.
+        candidates = _ytmusic_video_search(source, limit=3)
+        # Keep yt-dlp search as a last resort if the catalogue is unavailable.
         if not candidates:
             candidates = [{"search": f"ytsearch1:{source}", "title": source}]
 
@@ -518,69 +558,77 @@ def download_video_sync(
         if not search:
             continue
 
-        temp_dir = tempfile.mkdtemp(prefix="mikasa-vplay-")
-        options = {
-            **_youtube_options(),
-            "format": "best[height<=480]/best[height<=720]/best",
-            "skip_download": False,
-            "noplaylist": True,
-            "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
-            "merge_output_format": "mp4",
-            "max_filesize": max_bytes,
-            "socket_timeout": 20,
-            "retries": 2,
-            "fragment_retries": 3,
-            "concurrent_fragment_downloads": 2,
-            "overwrites": True,
-        }
-        try:
-            with YoutubeDL(options) as ydl:
-                info = ydl.extract_info(search, download=True)
-            if info and info.get("entries"):
-                info = next((entry for entry in info["entries"] if entry), None)
-            if not info:
-                raise RuntimeError("No video result was returned.")
-
-            raw_duration = info.get("duration") or candidate.get("duration")
-            video_duration = int(raw_duration) if raw_duration else None
-            if video_duration and video_duration > max_duration:
-                raise ValueError(
-                    f"Video is too long. The VC video limit is {max_duration // 60} minutes."
-                )
-
-            allowed = {".mp4", ".mkv", ".webm", ".mov", ".m4v"}
-            files = [
-                path for path in glob.glob(os.path.join(temp_dir, "*"))
-                if os.path.isfile(path)
-                and os.path.splitext(path)[1].lower() in allowed
-                and not path.endswith(".part")
-            ]
-            if not files:
-                raise RuntimeError("The downloader did not produce a playable video.")
-            video_path = max(files, key=os.path.getsize)
-            size = os.path.getsize(video_path)
-            if size <= 0 or size > max_bytes:
-                raise ValueError("Video is empty or too large for safe VC playback.")
-
-            return {
-                "path": video_path,
-                "temp_dir": temp_dir,
-                "title": info.get("title") or candidate.get("title") or "Video",
-                "duration": video_duration,
-                "uploader": info.get("uploader") or info.get("channel") or candidate.get("artist"),
-                "artist": _artist_name(info) or candidate.get("artist"),
-                "thumbnail": _best_thumbnail(info) or candidate.get("thumbnail"),
-                "source": info.get("webpage_url") or video_url or source,
-                "media_type": "video",
+        # Android and web clients increasingly return formats that need PO
+        # tokens. Try token-free clients separately, then continue to the next
+        # catalogue result if this particular video is unavailable.
+        clients = ("tv", "android_vr") if candidate.get("id") else (None,)
+        for player_client in clients:
+            temp_dir = tempfile.mkdtemp(prefix="mikasa-vplay-")
+            options = {
+                **_youtube_video_options(player_client),
+                "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
+                "merge_output_format": "mp4",
+                "max_filesize": max_bytes,
+                "overwrites": True,
             }
-        except Exception as exc:
-            errors.append(str(exc))
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            LOGGER.warning("VC video download failed for candidate %s: %s",
-                           candidate.get("id") or candidate.get("search") or "direct link", exc)
+            try:
+                with YoutubeDL(options) as ydl:
+                    info = ydl.extract_info(search, download=True)
+                if info and info.get("entries"):
+                    info = next((entry for entry in info["entries"] if entry), None)
+                if not info:
+                    raise RuntimeError("No video result was returned.")
+
+                raw_duration = info.get("duration") or candidate.get("duration")
+                video_duration = int(raw_duration) if raw_duration else None
+                if video_duration and video_duration > max_duration:
+                    raise ValueError(
+                        f"Video is too long. The VC video limit is {max_duration // 60} minutes."
+                    )
+
+                allowed = {".mp4", ".mkv", ".webm", ".mov", ".m4v"}
+                files = [
+                    path for path in glob.glob(os.path.join(temp_dir, "*"))
+                    if os.path.isfile(path)
+                    and os.path.splitext(path)[1].lower() in allowed
+                    and not path.endswith(".part")
+                ]
+                if not files:
+                    raise RuntimeError("The downloader did not produce a playable video.")
+                video_path = max(files, key=os.path.getsize)
+                size = os.path.getsize(video_path)
+                if size <= 0 or size > max_bytes:
+                    raise ValueError("Video is empty or too large for safe VC playback.")
+
+                LOGGER.info(
+                    "Prepared VC video with YouTube client %s: %s",
+                    player_client or "default",
+                    info.get("title") or candidate.get("title") or "Video",
+                )
+                return {
+                    "path": video_path,
+                    "temp_dir": temp_dir,
+                    "title": info.get("title") or candidate.get("title") or "Video",
+                    "duration": video_duration,
+                    "uploader": info.get("uploader") or info.get("channel") or candidate.get("artist"),
+                    "artist": _artist_name(info) or candidate.get("artist"),
+                    "thumbnail": _best_thumbnail(info) or candidate.get("thumbnail"),
+                    "source": info.get("webpage_url") or video_url or source,
+                    "media_type": "video",
+                }
+            except Exception as exc:
+                errors.append(str(exc))
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                LOGGER.warning(
+                    "VC video download failed for %s via %s: %s",
+                    candidate.get("id") or candidate.get("search") or "direct link",
+                    player_client or "default",
+                    exc,
+                )
 
     detail = errors[-1] if errors else "No playable video was found."
     raise RuntimeError("Could not prepare this video for voice-chat playback. " + detail[:240])
+
 
 
 def extract_playlist_sync(query: str, max_tracks: int = 20) -> list[dict]:
