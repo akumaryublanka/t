@@ -6,6 +6,32 @@ from yt_dlp import YoutubeDL
 
 LOGGER = logging.getLogger("waifu.music")
 
+def _new_ytmusic_client(timeout=(4, 10), retries: int = 1):
+    """Create a YT Music client with bounded timeouts and transient-error retries."""
+    import requests
+    from functools import partial
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+    from ytmusicapi import YTMusic
+
+    retry_policy = Retry(
+        total=max(0, int(retries)),
+        backoff_factor=0.35,
+        status_forcelist=(408, 425, 429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET", "POST"}),
+        respect_retry_after_header=False,
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry_policy, pool_connections=4, pool_maxsize=8)
+    session = requests.Session()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    session.request = partial(session.request, timeout=timeout)
+    client = YTMusic(language="en", location="IN", requests_session=session)
+    return client, session
+
+
+
 # The signature timestamp changes periodically; cache it per worker process.
 _YT_SIGNATURE_TIMESTAMP: int | None = None
 _YT_SIGNATURE_TIMESTAMP_AT = 0.0
@@ -54,9 +80,8 @@ def _youtube_cookie_file() -> str | None:
     """Return a private yt-dlp cookie file configured through environment vars.
 
     YOUTUBE_COOKIES_FILE may point to a mounted Netscape cookie file.
-    Alternatively, YOUTUBE_COOKIES may contain Netscape-format cookie text
-    or a path to such a file. Cookie contents are never written to the repo
-    or included in logs.
+    YOUTUBE_COOKIES may contain Netscape-format cookie text (real or escaped
+    newlines) or a path. Cookie contents are never logged.
     """
     import os
     import tempfile
@@ -67,24 +92,30 @@ def _youtube_cookie_file() -> str | None:
     candidate = configured_file or configured_value
     if not candidate:
         return None
-
-    # A path is preferable for large/mounted cookie files.
     if os.path.isfile(candidate):
         return candidate
+    if configured_file or not configured_value:
+        return None
 
-    # Otherwise treat YOUTUBE_COOKIES as the actual Netscape cookie contents.
-    if configured_file or not configured_value or "\\n" not in configured_value and not configured_value.startswith("# Netscape"):
+    newline = chr(10)
+    backslash = chr(92)
+    if newline not in configured_value and backslash + "n" not in configured_value:
         return None
     if _YOUTUBE_COOKIE_FILE and os.path.isfile(_YOUTUBE_COOKIE_FILE):
         return _YOUTUBE_COOKIE_FILE
 
+    cookie_text = (
+        configured_value
+        .replace(backslash + "r" + backslash + "n", newline)
+        .replace(backslash + "n", newline)
+    )
     fd, path = tempfile.mkstemp(prefix="mikasa-youtube-", suffix=".cookies.txt")
     try:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as cookie_file:
-            cookie_file.write(configured_value)
-            if not configured_value.endswith("\\n"):
-                cookie_file.write("\\n")
+            cookie_file.write(cookie_text)
+            if not cookie_text.endswith(newline):
+                cookie_file.write(newline)
         _YOUTUBE_COOKIE_FILE = path
         return path
     except Exception:
@@ -275,25 +306,25 @@ def _ytmusic_search(query: str) -> dict | None:
         }
 
     try:
-        import requests
-        from functools import partial
-        from ytmusicapi import YTMusic
-
-        session = requests.Session()
-        # The search endpoint was timing out at 7s on Render. Give it a realistic
-        # response window while keeping the handler's overall search deadline bounded.
-        session.request = partial(session.request, timeout=(4, 12))
-        client = YTMusic(
-            language="en",
-            location="IN",
-            requests_session=session,
-        )
-        results = client.search(query, filter="songs", limit=8)
+        client, _session = _new_ytmusic_client(timeout=(3, 8), retries=1)
+        results = client.search(query, filter="songs", limit=10)
         candidates = _rank_youtube_results(query, results or [])
+        best_score = _youtube_result_score(query, candidates[0]) if candidates else 0
+
+        # Some official tracks are indexed as music videos rather than songs.
+        # Query the video catalogue only when song results are empty or weak.
+        if best_score < 70:
+            try:
+                video_results = client.search(query, filter="videos", limit=10)
+                candidates = _rank_youtube_results(
+                    query, list(results or []) + list(video_results or [])
+                )
+                best_score = _youtube_result_score(query, candidates[0]) if candidates else 0
+            except Exception as video_search_error:
+                LOGGER.info("YT Music video-catalogue fallback unavailable: %s", video_search_error)
+
         if not candidates:
             return None
-
-        best_score = _youtube_result_score(query, candidates[0])
         if best_score < 70:
             LOGGER.info(
                 "No close YouTube Music match for '%s'; best result score was %s.",
@@ -316,7 +347,7 @@ def _ytmusic_search(query: str) -> dict | None:
             "artist": artist or None,
             "uploader": artist or None,
             "thumbnail": _best_thumbnail(first),
-            "ytmusic_candidates": [item["videoId"] for item in candidates[:3]],
+            "ytmusic_candidates": [item["videoId"] for item in candidates[:5]],
             "search_query": query,
             "expected_duration": first.get("duration_seconds"),
         }
@@ -483,13 +514,7 @@ def get_related_tracks_sync(
 ) -> list[dict]:
     """Return songs from the current track's YouTube Music radio/watch list."""
     try:
-        import requests
-        from functools import partial
-        from ytmusicapi import YTMusic
-
-        session = requests.Session()
-        session.request = partial(session.request, timeout=(4, 10))
-        client = YTMusic(language="en", location="IN", requests_session=session)
+        client, _session = _new_ytmusic_client(timeout=(4, 9), retries=1)
 
         seed_track = seed_track if isinstance(seed_track, dict) else {}
         source = str(seed_track.get("source") or "")
@@ -680,41 +705,36 @@ def _download_ytmusic_audio(
     candidate_ids: list[str] | None = None,
     expected_duration: int | None = None,
 ) -> dict | None:
-    """Download the best available audio format using ytmusicapi."""
+    """Download full-length audio through YT Music, trying several ranked candidates."""
     import os
-    import requests
-    from functools import partial
-    from ytmusicapi import YTMusic
+    import shutil
+    import subprocess
+    import time
 
-    session = requests.Session()
-    session.request = partial(session.request, timeout=(5, 18))
-    ytm = YTMusic(language="en", location="IN", requests_session=session)
-
+    ytm, session = _new_ytmusic_client(timeout=(4, 10), retries=1)
     direct_id = _youtube_video_id(source)
-    candidates = list(candidate_ids or [])
-    if direct_id and direct_id not in candidates:
-        candidates.insert(0, direct_id)
-    if not candidates and not direct_id:
-        results = ytm.search(source, filter="songs", limit=5)
-        candidates = [
-            item["videoId"] for item in results
-            if item.get("videoId") and item.get("isAvailable") is not False
-        ]
 
+    candidates = []
+    seen_ids = set()
+    for candidate_id in list(candidate_ids or []) + ([direct_id] if direct_id else []):
+        candidate_id = str(candidate_id or "").strip()
+        if candidate_id and candidate_id not in seen_ids:
+            candidates.append(candidate_id)
+            seen_ids.add(candidate_id)
+    if not candidates:
+        results = ytm.search(source, filter="songs", limit=8)
+        candidates = [
+            str(item["videoId"]) for item in (results or [])
+            if item.get("videoId") and item.get("isAvailable") is not False
+        ][:5]
     if not candidates:
         return None
 
-    # YouTube Music's get_song() requires the current signature timestamp
-    # for valid streaming URLs. The library's default can produce invalid URLs.
-    # Cache it for six hours so normal plays do not fetch base.js repeatedly.
-    import time
-
+    # Signed audio URLs need the current signature timestamp. Cache only the
+    # timestamp, never a stream URL (stream URLs expire).
     global _YT_SIGNATURE_TIMESTAMP, _YT_SIGNATURE_TIMESTAMP_AT
     now = time.monotonic()
-    if (
-        _YT_SIGNATURE_TIMESTAMP is not None
-        and now - _YT_SIGNATURE_TIMESTAMP_AT < 6 * 60 * 60
-    ):
+    if _YT_SIGNATURE_TIMESTAMP is not None and now - _YT_SIGNATURE_TIMESTAMP_AT < 6 * 60 * 60:
         signature_timestamp = _YT_SIGNATURE_TIMESTAMP
     else:
         signature_timestamp = ytm.get_signatureTimestamp()
@@ -724,53 +744,39 @@ def _download_ytmusic_audio(
         _YT_SIGNATURE_TIMESTAMP_AT = now
         LOGGER.info("Refreshed YouTube Music streaming signature timestamp.")
 
-    metadata = None
-    selected = None
-    video_id = None
+    stream_candidates = []
     preview_durations = []
-    for candidate_id in candidates[:2]:
+    for index, candidate_id in enumerate(candidates[:5]):
         try:
-            candidate = ytm.get_song(
-                candidate_id,
-                signatureTimestamp=signature_timestamp,
-            )
+            candidate = ytm.get_song(candidate_id, signatureTimestamp=signature_timestamp)
             status = (candidate.get("playabilityStatus") or {}).get("status")
             if status not in (None, "OK"):
-                LOGGER.debug("YouTube Music candidate %s is not playable.", candidate_id)
+                LOGGER.info("Skipping YT Music candidate %s (playability=%s).", candidate_id, status)
                 continue
-            candidate_details = candidate.get("videoDetails") or {}
-            raw_candidate_duration = candidate_details.get("lengthSeconds")
+
+            details = candidate.get("videoDetails") or {}
             try:
-                candidate_duration = int(raw_candidate_duration) if raw_candidate_duration else None
+                candidate_duration = int(details.get("lengthSeconds") or 0) or None
             except (TypeError, ValueError):
                 candidate_duration = None
-            if (
-                expected_duration
-                and candidate_duration
-                and candidate_duration < max(60, int(expected_duration * 0.75))
-            ):
-                LOGGER.warning(
-                    "Skipping short YouTube Music preview %s (%ss; expected about %ss).",
-                    candidate_id,
-                    candidate_duration,
-                    expected_duration,
-                )
-                preview_durations.append(candidate_duration)
-                continue
+            expected_for_candidate = candidate_duration or (expected_duration if index == 0 else None)
+
+            if expected_for_candidate and candidate_duration:
+                if candidate_duration < max(60, int(expected_for_candidate * 0.75)):
+                    preview_durations.append(candidate_duration)
+                    continue
 
             streaming_data = candidate.get("streamingData") or {}
             adaptive_formats = streaming_data.get("adaptiveFormats") or []
             formats = [
                 item for item in adaptive_formats
-                if item.get("url") and item.get("mimeType", "").startswith("audio/")
+                if isinstance(item, dict) and item.get("url")
+                and str(item.get("mimeType") or "").lower().startswith("audio/")
             ]
             LOGGER.info(
-                "YouTube Music candidate %s: status=%s, duration=%s, adaptive_formats=%s, playable_audio_formats=%s.",
-                candidate_id,
-                status or "unknown",
-                candidate_duration or "unknown",
-                len(adaptive_formats),
-                len(formats),
+                "YT Music candidate %s: status=%s, duration=%s, adaptive=%s, audio=%s.",
+                candidate_id, status or "unknown", candidate_duration or "unknown",
+                len(adaptive_formats), len(formats),
             )
             if not formats:
                 continue
@@ -778,139 +784,130 @@ def _download_ytmusic_audio(
                 formats,
                 key=lambda item: int(item.get("averageBitrate") or item.get("bitrate") or 0),
             )
-            metadata = candidate
-            video_id = candidate_id
-            break
+            stream_candidates.append((candidate_id, candidate, selected, expected_for_candidate))
         except Exception as exc:
-            LOGGER.info("YouTube Music candidate %s unavailable: %s", candidate_id, exc)
+            LOGGER.info("YT Music candidate %s lookup failed: %s", candidate_id, exc)
 
-    if metadata is None or selected is None or video_id is None:
-        if preview_durations:
-            raise RuntimeError(
-                "Only a short preview was returned "
-                f"({max(preview_durations)} seconds); the full track is required."
-            )
-        # YT Music can return adaptiveFormats with ciphered URLs but no direct
-        # audio URL. yt-dlp can decipher those formats when its EJS + Deno
-        # runtime is installed, so try the canonical YouTube URL before failing.
-        if direct_id:
-            try:
-                direct_source = f"https://www.youtube.com/watch?v={direct_id}"
-                LOGGER.info(
-                    "YT Music exposed no direct audio URLs for %s; trying yt-dlp full-audio extraction.",
-                    direct_id,
-                )
-                return _download_youtube_full_audio(
-                    direct_source,
-                    temp_dir,
-                    max_bytes,
-                    expected_duration,
-                )
-            except Exception as exc:
-                LOGGER.warning("yt-dlp full-audio fallback failed for %s: %s", direct_id, exc)
-                raise RuntimeError(
-                    "YouTube did not provide a verified full-length audio stream. "
-                    + str(exc)[:180]
-                ) from exc
-        return None
-
-    extension = ".m4a" if "audio/mp4" in selected.get("mimeType", "") else ".webm"
-    audio_path = os.path.join(temp_dir, f"{video_id}{extension}")
     headers = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
         "Accept": "*/*",
     }
-    written = 0
-    with requests.get(
-        selected["url"],
-        headers=headers,
-        stream=True,
-        timeout=(4, 12),
-    ) as response:
-        response.raise_for_status()
-        if "text/html" in response.headers.get("Content-Type", "").lower():
-            raise RuntimeError("YouTube Music returned a web page instead of audio.")
-        declared_size = int(response.headers.get("Content-Length") or 0)
-        if declared_size > max_bytes:
-            raise ValueError("The audio file is too large for safe voice-chat playback.")
-        with open(audio_path, "wb") as output:
-            for chunk in response.iter_content(chunk_size=512 * 1024):
-                if not chunk:
-                    continue
-                written += len(chunk)
-                if written > max_bytes:
-                    raise ValueError("The audio file is too large for safe voice-chat playback.")
-                output.write(chunk)
-
-    if written <= 0:
-        raise RuntimeError("YouTube Music returned an empty audio stream.")
-
-    details = metadata.get("videoDetails") or {}
-    probed_duration = None
-    try:
-        import shutil
-        import subprocess
-
-        ffprobe = shutil.which("ffprobe")
-        if ffprobe:
-            probe = subprocess.run(
-                [
-                    ffprobe, "-v", "error",
-                    "-show_entries", "format=duration",
-                    "-of", "default=noprint_wrappers=1:nokey=1",
-                    audio_path,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=6,
-                check=False,
-            )
-            if probe.returncode == 0 and probe.stdout.strip():
-                probed_duration = int(float(probe.stdout.strip()))
-    except Exception:
-        LOGGER.debug("Could not verify downloaded audio duration.", exc_info=True)
-
-    raw_meta_duration = details.get("lengthSeconds")
-    try:
-        metadata_duration = int(raw_meta_duration) if raw_meta_duration else None
-    except (TypeError, ValueError):
-        metadata_duration = None
-
-    actual_duration = probed_duration or metadata_duration
-    if (
-        expected_duration
-        and actual_duration
-        and actual_duration < max(60, int(expected_duration * 0.75))
-    ):
+    last_stream_error = None
+    for video_id, metadata, selected, expected_for_candidate in stream_candidates:
+        extension = ".m4a" if "audio/mp4" in str(selected.get("mimeType") or "") else ".webm"
+        audio_path = os.path.join(temp_dir, f"{video_id}{extension}")
         try:
-            os.remove(audio_path)
-        except OSError:
-            pass
+            written = 0
+            with session.get(selected["url"], headers=headers, stream=True) as response:
+                response.raise_for_status()
+                content_type = response.headers.get("Content-Type", "").lower()
+                if "text/html" in content_type or "application/json" in content_type:
+                    raise RuntimeError("YouTube Music returned a web page instead of audio.")
+                try:
+                    declared_size = int(response.headers.get("Content-Length") or 0)
+                except (TypeError, ValueError):
+                    declared_size = 0
+                if declared_size > max_bytes:
+                    raise ValueError("The audio file is too large for safe voice-chat playback.")
+                with open(audio_path, "wb") as output:
+                    for chunk in response.iter_content(chunk_size=256 * 1024):
+                        if not chunk:
+                            continue
+                        written += len(chunk)
+                        if written > max_bytes:
+                            raise ValueError("The audio file is too large for safe voice-chat playback.")
+                        output.write(chunk)
+            if written <= 0:
+                raise RuntimeError("YouTube Music returned an empty audio stream.")
+
+            details = metadata.get("videoDetails") or {}
+            probed_duration = None
+            ffprobe = shutil.which("ffprobe")
+            if ffprobe:
+                probe = subprocess.run(
+                    [
+                        ffprobe, "-v", "error", "-show_entries", "format=duration",
+                        "-of", "default=noprint_wrappers=1:nokey=1", audio_path,
+                    ],
+                    capture_output=True, text=True, timeout=8, check=False,
+                )
+                if probe.returncode == 0 and probe.stdout.strip():
+                    try:
+                        probed_duration = int(float(probe.stdout.strip()))
+                    except (TypeError, ValueError):
+                        pass
+            try:
+                metadata_duration = int(details.get("lengthSeconds") or 0) or None
+            except (TypeError, ValueError):
+                metadata_duration = None
+
+            actual_duration = probed_duration or metadata_duration
+            if expected_for_candidate:
+                minimum_duration = max(60, int(expected_for_candidate * 0.75))
+                if not actual_duration or actual_duration < minimum_duration:
+                    raise RuntimeError(
+                        "Only a short or unverified audio preview was returned "
+                        f"({actual_duration or 'unknown'}s; expected about {expected_for_candidate}s)."
+                    )
+
+            raw_duration = probed_duration or metadata_duration or expected_for_candidate
+            try:
+                track_duration = int(raw_duration) if raw_duration else None
+            except (TypeError, ValueError):
+                track_duration = None
+            thumb_info = details.get("thumbnail") or {}
+            thumb_list = thumb_info.get("thumbnails", []) if isinstance(thumb_info, dict) else thumb_info
+            return {
+                "path": audio_path,
+                "title": details.get("title") or source,
+                "duration": track_duration,
+                "artist": details.get("author"),
+                "uploader": details.get("author"),
+                "thumbnail": _best_thumbnail({"thumbnails": thumb_list}),
+                "source": f"https://music.youtube.com/watch?v={video_id}",
+                "mime_type": selected.get("mimeType"),
+            }
+        except Exception as exc:
+            last_stream_error = exc
+            try:
+                if os.path.isfile(audio_path):
+                    os.remove(audio_path)
+            except OSError:
+                pass
+            LOGGER.warning(
+                "YT Music stream failed for candidate %s; trying another result: %s",
+                video_id, exc,
+            )
+
+    # Ciphered formats can still be resolved by yt-dlp + its JavaScript runtime.
+    fallback_id = direct_id or (candidates[0] if candidates else None)
+    if fallback_id:
+        try:
+            LOGGER.info("Trying yt-dlp full-audio fallback after YT Music stream attempts.")
+            return _download_youtube_full_audio(
+                f"https://www.youtube.com/watch?v={fallback_id}",
+                temp_dir,
+                max_bytes,
+                expected_duration,
+            )
+        except Exception as exc:
+            LOGGER.warning("yt-dlp full-audio fallback failed for %s: %s", fallback_id, exc)
+            last_stream_error = exc
+
+    if preview_durations:
         raise RuntimeError(
-            f"Only a {actual_duration}-second preview was returned; "
-            f"the full {expected_duration}-second track is required."
+            "Only short YouTube Music previews were available "
+            f"({max(preview_durations)}s); a complete track is required."
         )
-
-    title = details.get("title") or source
-    raw_duration = probed_duration or details.get("lengthSeconds") or expected_duration
-    try:
-        track_duration = int(raw_duration) if raw_duration else None
-    except (TypeError, ValueError):
-        track_duration = None
-
-    thumb_info = details.get("thumbnail") or {}
-    thumb_list = thumb_info.get("thumbnails", []) if isinstance(thumb_info, dict) else thumb_info
-    return {
-        "path": audio_path,
-        "title": title,
-        "duration": track_duration,
-        "artist": details.get("author"),
-        "uploader": details.get("author"),
-        "thumbnail": _best_thumbnail({"thumbnails": thumb_list}),
-        "source": f"https://music.youtube.com/watch?v={video_id}",
-        "mime_type": selected.get("mimeType"),
-    }
+    if last_stream_error:
+        raise RuntimeError(
+            "YT Music could not provide a verified full audio stream. "
+            + str(last_stream_error)[:180]
+        ) from last_stream_error
+    return None
 
 def download_track_sync(
     source: str,
@@ -956,13 +953,9 @@ def download_track_sync(
             shutil.rmtree(ytm_temp_dir, ignore_errors=True)
             LOGGER.warning("YouTube Music API playback path unavailable: %s", exc)
 
-        # When YouTube is bot-gated, try a closely ranked SoundCloud version.
-        # The fallback below verifies full-track duration before accepting audio.
-
-        if ytmusic_error and "preview" in str(ytmusic_error).casefold():
-            raise RuntimeError(
-                f"{ytmusic_error} Refusing a partial track."
-            ) from ytmusic_error
+        # Try a closely ranked SoundCloud version even when YT Music only exposes
+        # a preview. The fallback still verifies full-track duration before
+        # accepting it; a partial SoundCloud preview is never treated as a full song.
 
     query = fallback_query or (None if is_url else source)
     searches = (
@@ -1122,13 +1115,7 @@ def download_track_sync(
 def _ytmusic_video_search(query: str, limit: int = 5) -> list[dict]:
     """Resolve video IDs through YouTube Music, avoiding yt-dlp's search API."""
     try:
-        import requests
-        from functools import partial
-        from ytmusicapi import YTMusic
-
-        session = requests.Session()
-        session.request = partial(session.request, timeout=(5, 12))
-        client = YTMusic(language="en", location="IN", requests_session=session)
+        client, _session = _new_ytmusic_client(timeout=(4, 9), retries=1)
         results = []
         for filter_name in ("videos", "songs"):
             try:
