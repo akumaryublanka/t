@@ -94,6 +94,7 @@ BOT_COMMANDS = [
 
     # 🎵 Voice chat music
     BotCommand("play", "🎵 Play or queue a song in voice chat"),
+    BotCommand("vplay", "🎬 Play a video with audio in voice chat"),
     BotCommand("pause", "⏸️ Pause voice chat music"),
     BotCommand("resume", "▶️ Resume voice chat music"),
     BotCommand("skip", "⏭️ Skip the current track"),
