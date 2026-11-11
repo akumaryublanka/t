@@ -81,18 +81,14 @@ def _playing_text(track: dict, queued: int = 0) -> str:
 
 
 async def _reply_now_playing(update: Update, track: dict, queued: int = 0, paused: bool = False) -> None:
-    """Send the player card with generated artwork; fall back to text if image delivery fails."""
+    """Send the artwork card quickly; fall back to text if image work is slow."""
     message = update.effective_message
     if not message:
         return
     caption = _playing_text(track, queued)
-    live_state = runtime.get_session(update.effective_chat.id) or {}
-    keyboard = player_keyboard(
-        update.effective_chat.id,
-        paused=paused,
-        autoplay=bool(live_state.get("autoplay", False)),
-    )
-    try:
+    keyboard = player_keyboard(update.effective_chat.id, paused=paused)
+
+    async def send_card() -> None:
         thumbnail = await asyncio.to_thread(
             create_music_thumbnail,
             title=track.get("title", "Unknown Track"),
@@ -107,8 +103,14 @@ async def _reply_now_playing(update: Update, track: dict, queued: int = 0, pause
             parse_mode="HTML",
             reply_markup=keyboard,
         )
+
+    try:
+        await asyncio.wait_for(send_card(), timeout=4.0)
     except Exception:
-        runtime.LOGGER.exception("Music thumbnail delivery failed; sending text player instead")
+        runtime.LOGGER.info(
+            "Player artwork timed out or failed; sending the fast text player instead.",
+            exc_info=True,
+        )
         await reply(update, caption, reply_markup=keyboard)
 
 
@@ -159,32 +161,18 @@ async def _add_tracks(
     for track in tracks:
         track["requested_by"] = requester
 
+    start_state = None
+    first = None
+    queued_text = None
     async with runtime._chat_locks[chat_id]:
         state = runtime._sessions.setdefault(chat_id, _new_state())
-        if state.get("current") is None:
+        if state.get("current") is None and not state.get("transitioning"):
             first, *remaining = tracks
-            if status_message:
-                preparing = (
-                    "🎬 <b>Preparing video for the voice chat…</b>"
-                    if first.get("media_type") == "video"
-                    else "🎧 <b>Preparing high-quality audio…</b>"
-                )
-                try:
-                    await status_message.edit_text(preparing, parse_mode="HTML")
-                except Exception:
-                    pass
-            try:
-                await runtime._start_track(chat_id, first)
-            except Exception:
-                await runtime._stop_chat_locked(chat_id)
-                raise
+            state["transitioning"] = True
+            # Reserve playlist items before downloading so later requests stay
+            # behind them in the same order.
             state["queue"].extend(remaining)
-            await _reply_now_playing(update, first, len(remaining))
-            if status_message:
-                try:
-                    await status_message.delete()
-                except Exception:
-                    pass
+            start_state = state
         else:
             state["queue"].extend(tracks)
             position = len(state["queue"]) - len(tracks) + 1
@@ -196,17 +184,47 @@ async def _add_tracks(
                 f"➕ <b>Added to queue</b>\n{track_text}\n"
                 f"📍 Starting position: <b>{position}</b>"
             )
-            if status_message:
-                try:
-                    await status_message.edit_text(
-                        queued_text,
-                        parse_mode="HTML",
-                        disable_web_page_preview=True,
-                    )
-                except Exception:
-                    await reply(update, queued_text)
-            else:
+
+    if first is None:
+        if status_message:
+            try:
+                await status_message.edit_text(
+                    queued_text,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True,
+                )
+            except Exception:
                 await reply(update, queued_text)
+        else:
+            await reply(update, queued_text)
+        return
+
+    if status_message:
+        preparing = (
+            "🎬 <b>Preparing video for the voice chat…</b>"
+            if first.get("media_type") == "video"
+            else "🎧 <b>Preparing high-quality audio…</b>"
+        )
+        try:
+            await status_message.edit_text(preparing, parse_mode="HTML")
+        except Exception:
+            pass
+
+    try:
+        # Network lookup/download runs without the per-chat command lock.
+        await runtime._start_track(chat_id, first)
+    except Exception:
+        async with runtime._chat_locks[chat_id]:
+            if runtime._sessions.get(chat_id) is start_state:
+                await runtime._stop_chat_locked(chat_id)
+        raise
+
+    await _reply_now_playing(update, first, len(start_state.get("queue", [])))
+    if status_message:
+        try:
+            await status_message.delete()
+        except Exception:
+            pass
 
 
 async def play(update: Update, context: CallbackContext) -> None:
@@ -344,10 +362,15 @@ async def skip(update: Update, context: CallbackContext) -> None:
     if not state or not state.get("current"):
         await reply(update, "ℹ️ Nothing is playing right now.")
         return
-    if await runtime.skip_current(chat_id):
-        await reply(update, "⏭️ Skipped the current track.")
-    else:
-        await reply(update, "ℹ️ Track already changed or nothing is playing.")
+    await reply(update, "⏭️ <b>Skipping current track…</b>")
+
+    async def finish_skip() -> None:
+        try:
+            await runtime.skip_current(chat_id)
+        except Exception:
+            runtime.LOGGER.exception("Background skip failed in chat %s", chat_id)
+
+    asyncio.create_task(finish_skip())
 
 
 async def end(update: Update, context: CallbackContext) -> None:
@@ -667,7 +690,12 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
             await query.answer("Resumed")
         elif action == "skip":
             await query.answer("Skipping…")
-            await runtime.skip_current(chat_id)
+            async def finish_button_skip() -> None:
+                try:
+                    await runtime.skip_current(chat_id)
+                except Exception:
+                    runtime.LOGGER.exception("Background button skip failed in chat %s", chat_id)
+            asyncio.create_task(finish_button_skip())
         elif action == "replay":
             await runtime.replay_current(chat_id)
             await query.answer("Replaying current track")
