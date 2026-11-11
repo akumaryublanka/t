@@ -16,6 +16,7 @@ from waifu import application
 from waifu.music.config import get_music_credentials
 from waifu.music.downloader import download_track_sync
 from waifu.music.formatting import duration, player_keyboard
+from waifu.music.thumbnail import create_music_thumbnail
 
 LOGGER = logging.getLogger("waifu.music")
 
@@ -144,6 +145,44 @@ async def _send_chat_message(chat_id: int, text: str, reply_markup=None) -> None
         )
     except Exception:
         LOGGER.exception("Could not send music status message to %s", chat_id)
+
+
+async def _send_now_playing(chat_id: int, track: dict) -> None:
+    """Send an anime-style photo player card when a queued track starts."""
+    artist = track.get("artist") or track.get("uploader") or "Unknown Artist"
+    caption = (
+        "🎶 <b>MIKASAVERSE · NOW PLAYING</b>\n"
+        f"🎧 {escape(track.get('title', 'Unknown track'))}"
+    )
+    if artist and str(artist).strip().lower() not in str(track.get("title", "")).strip().lower():
+        caption += f"\n🎤 {escape(str(artist))}"
+    caption += (
+        f"\n⏱️ {duration(track.get('duration'))}"
+        f"\n👤 Requested by {escape(track.get('requested_by', 'Unknown'))}"
+    )
+    try:
+        image = await asyncio.to_thread(
+            create_music_thumbnail,
+            title=track.get("title", "Unknown track"),
+            artist=artist,
+            artwork=track.get("thumbnail"),
+            duration=track.get("duration"),
+            requester=track.get("requested_by"),
+        )
+        await application.bot.send_photo(
+            chat_id=chat_id,
+            photo=image,
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=player_keyboard(chat_id),
+        )
+    except Exception:
+        LOGGER.exception("Could not send queued music thumbnail in %s.", chat_id)
+        await _send_chat_message(
+            chat_id,
+            caption,
+            reply_markup=player_keyboard(chat_id),
+        )
 
 
 async def _find_chat_in_dialogs(chat_id: int) -> bool:
@@ -340,13 +379,7 @@ async def advance_queue(
                 try:
                     await _start_track(chat_id, dict(current))
                     if announce:
-                        await _send_chat_message(
-                            chat_id,
-                            f"🔁 <b>REPEATING TRACK</b>\n"
-                            f"🎵 {escape(current['title'])}\n"
-                            f"⏱️ {duration(current.get('duration'))}",
-                            reply_markup=player_keyboard(chat_id),
-                        )
+                        await _send_now_playing(chat_id, current)
                     return True
                 except Exception:
                     LOGGER.exception("Could not repeat the current track in %s", chat_id)
@@ -356,13 +389,7 @@ async def advance_queue(
             try:
                 await _start_track(chat_id, next_track)
                 if announce:
-                    await _send_chat_message(
-                        chat_id,
-                        f"⏭️ <b>NOW PLAYING</b>\n"
-                        f"🎵 {escape(next_track['title'])}\n"
-                        f"⏱️ {duration(next_track.get('duration'))}",
-                        reply_markup=player_keyboard(chat_id),
-                    )
+                    await _send_now_playing(chat_id, next_track)
                 return True
             except Exception:
                 LOGGER.exception("Could not start the next queued track in %s", chat_id)
