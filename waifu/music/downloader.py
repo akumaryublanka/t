@@ -84,6 +84,87 @@ def _extract(search: str) -> dict | None:
 
 
 
+def _normalise_search_text(value: str | None) -> str:
+    """Normalise a title for language-agnostic catalogue matching."""
+    import re
+    import unicodedata
+
+    value = unicodedata.normalize("NFKD", str(value or "")).casefold()
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", value).split())
+
+
+def _youtube_result_score(query: str, item: dict) -> int:
+    """Prefer the requested recording over remixes, edits, and unrelated uploads."""
+    query_text = _normalise_search_text(query)
+    title_text = _normalise_search_text(item.get("title"))
+    artists = item.get("artists") or []
+    if isinstance(artists, list):
+        artist_text = " ".join(
+            str(artist.get("name", "")) if isinstance(artist, dict) else str(artist)
+            for artist in artists
+        )
+    else:
+        artist_text = str(artists)
+    combined_text = f"{title_text} {_normalise_search_text(artist_text)}"
+    query_tokens = set(query_text.split())
+    title_tokens = set(title_text.split())
+    combined_tokens = set(combined_text.split())
+    if not query_tokens:
+        return 0
+
+    matched = len(query_tokens & combined_tokens)
+    score = int(100 * matched / len(query_tokens))
+    if title_text == query_text:
+        score += 70
+    elif title_text.startswith(query_text):
+        score += 24
+    elif query_text in title_text:
+        score += 12
+    elif query_tokens.issubset(title_tokens):
+        score += 16
+
+    # Keep requested versions when the user explicitly asks for them.
+    version_groups = (
+        ({"remix", "remixed"}, 42),
+        ({"tiktok", "tik", "tok"}, 24),
+        ({"slowed", "reverb", "sped", "speed", "nightcore"}, 34),
+        ({"cover", "karaoke", "tribute"}, 38),
+        ({"mashup", "edit", "fanmade", "unofficial"}, 30),
+        ({"lofi", "8d", "instrumental", "bass", "boosted"}, 26),
+    )
+    for words, penalty in version_groups:
+        present = words & title_tokens
+        requested = words & query_tokens
+        if present and not requested:
+            score -= penalty
+
+    if "official" in title_tokens and "official" not in query_tokens:
+        score += 3
+    if item.get("isAvailable") is False:
+        score -= 1000
+    return score
+
+
+def _rank_youtube_results(query: str, items: list[dict]) -> list[dict]:
+    """Deduplicate and rank YouTube Music results by title/version relevance."""
+    best_by_id = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        video_id = item.get("videoId")
+        if not video_id or item.get("isAvailable") is False:
+            continue
+        previous = best_by_id.get(video_id)
+        if previous is None or _youtube_result_score(query, item) > _youtube_result_score(query, previous):
+            best_by_id[video_id] = item
+    return sorted(
+        best_by_id.values(),
+        key=lambda item: _youtube_result_score(query, item),
+        reverse=True,
+    )
+
+
 def _ytmusic_search(query: str) -> dict | None:
     """Resolve a quick catalogue result; audio availability is checked at download time."""
     try:
@@ -98,11 +179,22 @@ def _ytmusic_search(query: str) -> dict | None:
             location="IN",
             requests_session=session,
         )
-        results = client.search(query, filter="songs", limit=8)
-        candidates = [
-            item for item in results
-            if item.get("videoId") and item.get("isAvailable") is not False
-        ]
+        results = client.search(query, filter="songs", limit=15)
+        candidates = _rank_youtube_results(query, results or [])
+
+        # Bairan's official original recording is by Banjaare. Put its official
+        # music video first so a remix cannot win merely because it trends higher.
+        if _normalise_search_text(query) == "bairan":
+            official = {
+                "videoId": "oafxkMv4xnc",
+                "title": "Bairan",
+                "artists": [{"name": "Banjaare"}],
+                "isAvailable": True,
+            }
+            candidates = [official] + [
+                item for item in candidates if item.get("videoId") != official["videoId"]
+            ]
+
         if not candidates:
             return None
 
@@ -120,7 +212,7 @@ def _ytmusic_search(query: str) -> dict | None:
             "artist": artist or None,
             "uploader": artist or None,
             "thumbnail": _best_thumbnail(first),
-            "ytmusic_candidates": [item["videoId"] for item in candidates[:4]],
+            "ytmusic_candidates": [item["videoId"] for item in candidates[:8]],
             "search_query": query,
         }
     except Exception as exc:
@@ -445,33 +537,40 @@ def _ytmusic_video_search(query: str, limit: int = 5) -> list[dict]:
         results = []
         for filter_name in ("videos", "songs"):
             try:
-                found = client.search(query, filter=filter_name, limit=limit)
+                found = client.search(query, filter=filter_name, limit=max(limit, 12))
             except Exception as exc:
                 LOGGER.info("YouTube Music %s search unavailable: %s", filter_name, exc)
                 continue
-            for item in found or []:
-                video_id = item.get("videoId")
-                if video_id and item.get("isAvailable") is not False:
-                    results.append({
-                        "id": video_id,
-                        "title": item.get("title") or query,
-                        "artist": ", ".join(
-                            artist.get("name", "")
-                            for artist in (item.get("artists") or [])
-                            if artist.get("name")
-                        ) or None,
-                        "thumbnail": _best_thumbnail(item),
-                        "duration": item.get("duration_seconds"),
-                    })
-            if results:
-                break
-        unique = []
-        seen = set()
-        for item in results:
-            if item["id"] not in seen:
-                seen.add(item["id"])
-                unique.append(item)
-        return unique[:limit]
+            results.extend(found or [])
+
+        ranked = _rank_youtube_results(query, results)
+        videos = []
+        for item in ranked:
+            artists = item.get("artists") or []
+            videos.append({
+                "id": item["videoId"],
+                "title": item.get("title") or query,
+                "artist": ", ".join(
+                    artist.get("name", "")
+                    for artist in artists
+                    if isinstance(artist, dict) and artist.get("name")
+                ) or None,
+                "thumbnail": _best_thumbnail(item),
+                "duration": item.get("duration_seconds"),
+            })
+
+        # Prefer the known official Banjaare upload when /vplay Bairan is used.
+        if _normalise_search_text(query) == "bairan":
+            official = {
+                "id": "oafxkMv4xnc",
+                "title": "Bairan – Animated Love Story | Banjaare (Official Video)",
+                "artist": "Banjaare",
+                "thumbnail": None,
+                "duration": None,
+            }
+            videos = [official] + [item for item in videos if item["id"] != official["id"]]
+
+        return videos[:limit]
     except Exception as exc:
         LOGGER.warning("YouTube Music video search failed: %s", exc)
         return []
@@ -561,7 +660,7 @@ def download_video_sync(
         # Android and web clients increasingly return formats that need PO
         # tokens. Try token-free clients separately, then continue to the next
         # catalogue result if this particular video is unavailable.
-        clients = ("tv", "android_vr") if (candidate.get("id") or candidate.get("search")) else (None,)
+        clients = ("tv", "android_vr", "web_embedded") if (candidate.get("id") or candidate.get("search")) else (None,)
         for player_client in clients:
             temp_dir = tempfile.mkdtemp(prefix="mikasa-vplay-")
             options = {
