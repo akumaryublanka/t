@@ -664,3 +664,80 @@ def create_music_thumbnail(
 
 
 generate_thumbnail = create_music_thumbnail
+
+
+# If the uploaded background asset is unavailable, compose the Sakura-night scene
+# from the repository's bundled Mikasa portrait so the player never falls back
+# to an unrelated generic card.
+def _load_sakura_template() -> Optional[Image.Image]:
+    accent = (238, 83, 139)
+    try:
+        base = Image.new("RGBA", (WIDTH, HEIGHT), (5, 5, 11, 255))
+
+        # Deep charcoal-to-plum night gradient.
+        gradient = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+        gd = ImageDraw.Draw(gradient)
+        for x in range(WIDTH):
+            t = x / max(WIDTH - 1, 1)
+            color = (int(16 - 10 * t), int(8 - 3 * t), int(29 - 15 * t), 255)
+            gd.line((x, 0, x, HEIGHT), fill=color)
+        base.alpha_composite(gradient)
+
+        # Moon glow and scattered stars, kept behind the portrait.
+        glow = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+        glow_draw = ImageDraw.Draw(glow)
+        glow_draw.ellipse((470, -100, 800, 230), fill=(255, 177, 204, 70))
+        glow_draw.ellipse((540, -35, 730, 155), fill=(255, 224, 231, 190))
+        glow = glow.filter(ImageFilter.GaussianBlur(28))
+        base.alpha_composite(glow)
+
+        # Use the existing bundled hand-drawn Mikasa artwork from the repository.
+        portrait = _load_mikasa_portrait((690, HEIGHT), accent).convert("RGBA")
+        base.alpha_composite(portrait, (0, 0))
+
+        # Fade the portrait into the dark information area.
+        fade = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+        fd = ImageDraw.Draw(fade)
+        for x in range(545, 735):
+            alpha = int(255 * max(0.0, min(1.0, (x - 545) / 190)))
+            fd.line((x, 0, x, HEIGHT), fill=(5, 5, 11, alpha))
+        base.alpha_composite(fade)
+
+        draw = ImageDraw.Draw(base, "RGBA")
+
+        # Soft cherry-blossom clusters and drifting petals.
+        petals = [
+            (20, 22, 13, 6), (50, 42, 10, 5), (93, 15, 9, 5),
+            (445, 28, 10, 5), (505, 110, 8, 4), (120, 625, 12, 5),
+            (500, 655, 10, 5), (585, 190, 8, 4), (620, 60, 7, 4),
+        ]
+        for px, py, rx, ry in petals:
+            draw.ellipse((px-rx, py-ry, px+rx, py+ry),
+                         fill=(242, 106, 157, 125))
+        for px, py in ((300, 80), (385, 165), (75, 285), (560, 405), (180, 590)):
+            draw.ellipse((px-8, py-3, px+8, py+3),
+                         fill=(255, 168, 196, 155))
+
+        # Elegant corner branding and Mikasa quote, matching the reference mood.
+        draw.line((42, 42, 42, 112), fill=(245, 112, 164, 235), width=2)
+        draw.text((60, 42), "MIKASAVERSE",
+                  font=_sakura_font(22, italic=True), fill=(249, 235, 241, 255))
+        draw.text((61, 73), "M U S I C   P L A Y E R",
+                  font=_sakura_font(9, bold=True), fill=(187, 166, 180, 255))
+
+        draw.line((835, 48, 1222, 48), fill=(245, 220, 231, 60), width=1)
+        draw.text((1005, 65), "“Even if I die…",
+                  font=_sakura_font(18, italic=True), fill=(229, 214, 224, 255))
+        draw.text((850, 94), "I want to be by your side.”",
+                  font=_sakura_font(18, italic=True), fill=(229, 214, 224, 255))
+        draw.text((1115, 125), "— Mikasa",
+                  font=_sakura_font(15, italic=True), fill=(210, 190, 202, 255))
+
+        draw.line((42, 650, 42, 690), fill=(245, 112, 164, 235), width=2)
+        draw.text((60, 646), "M I K A S A V E R S E",
+                  font=_sakura_font(17), fill=(225, 207, 217, 255))
+        draw.text((61, 674), "L I S T E N   ·   E N J O Y   ·   V I B E",
+                  font=_sakura_font(8, bold=True), fill=(172, 153, 166, 255))
+        return base.convert("RGB")
+    except Exception:
+        return _load_mikasa_portrait((WIDTH, HEIGHT), accent).convert("RGB")
