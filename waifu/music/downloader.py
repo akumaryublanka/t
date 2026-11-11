@@ -432,12 +432,57 @@ def download_track_sync(
     )
 
 
+def _ytmusic_video_search(query: str, limit: int = 5) -> list[dict]:
+    """Resolve video IDs through YouTube Music, avoiding yt-dlp's search API."""
+    try:
+        import requests
+        from functools import partial
+        from ytmusicapi import YTMusic
+
+        session = requests.Session()
+        session.request = partial(session.request, timeout=(5, 12))
+        client = YTMusic(language="en", location="IN", requests_session=session)
+        results = []
+        for filter_name in ("videos", "songs"):
+            try:
+                found = client.search(query, filter=filter_name, limit=limit)
+            except Exception as exc:
+                LOGGER.info("YouTube Music %s search unavailable: %s", filter_name, exc)
+                continue
+            for item in found or []:
+                video_id = item.get("videoId")
+                if video_id and item.get("isAvailable") is not False:
+                    results.append({
+                        "id": video_id,
+                        "title": item.get("title") or query,
+                        "artist": ", ".join(
+                            artist.get("name", "")
+                            for artist in (item.get("artists") or [])
+                            if artist.get("name")
+                        ) or None,
+                        "thumbnail": _best_thumbnail(item),
+                        "duration": item.get("duration_seconds"),
+                    })
+            if results:
+                break
+        unique = []
+        seen = set()
+        for item in results:
+            if item["id"] not in seen:
+                seen.add(item["id"])
+                unique.append(item)
+        return unique[:limit]
+    except Exception as exc:
+        LOGGER.warning("YouTube Music video search failed: %s", exc)
+        return []
+
+
 def download_video_sync(
     source: str,
     max_bytes: int = 72 * 1024 * 1024,
     max_duration: int = 600,
 ) -> dict:
-    """Download one video with audio for Telegram group voice-chat playback."""
+    """Download a short video for VC playback, using YT Music to resolve title searches."""
     import glob
     import os
     import shutil
@@ -447,24 +492,45 @@ def download_video_sync(
         raise ValueError("Provide a valid video title or link.")
 
     is_url = source.startswith(("http://", "https://"))
-    searches = [source] if is_url else [f"ytsearch1:{source}"]
-    errors = []
+    candidates = []
+    if is_url:
+        video_id = _youtube_video_id(source)
+        candidates = [{
+            "id": video_id,
+            "title": source,
+            "artist": None,
+            "thumbnail": None,
+            "duration": None,
+        }] if video_id else [{"url": source, "title": source}]
+    else:
+        candidates = _ytmusic_video_search(source)
+        # Keep a yt-dlp search fallback only if the catalogue API is unavailable.
+        if not candidates:
+            candidates = [{"search": f"ytsearch1:{source}", "title": source}]
 
-    for search in searches:
+    errors = []
+    for candidate in candidates:
+        video_url = candidate.get("url") or (
+            f"https://www.youtube.com/watch?v={candidate['id']}"
+            if candidate.get("id") else None
+        )
+        search = video_url or candidate.get("search")
+        if not search:
+            continue
+
         temp_dir = tempfile.mkdtemp(prefix="mikasa-vplay-")
         options = {
             **_youtube_options(),
-            "format": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+            "format": "best[height<=480]/best[height<=720]/best",
             "skip_download": False,
             "noplaylist": True,
-            "playlist_items": "1",
             "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
             "merge_output_format": "mp4",
             "max_filesize": max_bytes,
-            "socket_timeout": 15,
-            "retries": 1,
-            "fragment_retries": 2,
-            "concurrent_fragment_downloads": 4,
+            "socket_timeout": 20,
+            "retries": 2,
+            "fragment_retries": 3,
+            "concurrent_fragment_downloads": 2,
             "overwrites": True,
         }
         try:
@@ -475,7 +541,7 @@ def download_video_sync(
             if not info:
                 raise RuntimeError("No video result was returned.")
 
-            raw_duration = info.get("duration")
+            raw_duration = info.get("duration") or candidate.get("duration")
             video_duration = int(raw_duration) if raw_duration else None
             if video_duration and video_duration > max_duration:
                 raise ValueError(
@@ -499,18 +565,19 @@ def download_video_sync(
             return {
                 "path": video_path,
                 "temp_dir": temp_dir,
-                "title": info.get("title") or "Video",
+                "title": info.get("title") or candidate.get("title") or "Video",
                 "duration": video_duration,
-                "uploader": info.get("uploader") or info.get("channel"),
-                "artist": _artist_name(info),
-                "thumbnail": _best_thumbnail(info),
-                "source": info.get("webpage_url") or source,
+                "uploader": info.get("uploader") or info.get("channel") or candidate.get("artist"),
+                "artist": _artist_name(info) or candidate.get("artist"),
+                "thumbnail": _best_thumbnail(info) or candidate.get("thumbnail"),
+                "source": info.get("webpage_url") or video_url or source,
                 "media_type": "video",
             }
         except Exception as exc:
             errors.append(str(exc))
             shutil.rmtree(temp_dir, ignore_errors=True)
-            LOGGER.warning("VC video download failed: %s", exc)
+            LOGGER.warning("VC video download failed for candidate %s: %s",
+                           candidate.get("id") or candidate.get("search") or "direct link", exc)
 
     detail = errors[-1] if errors else "No playable video was found."
     raise RuntimeError("Could not prepare this video for voice-chat playback. " + detail[:240])
