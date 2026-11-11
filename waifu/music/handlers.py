@@ -289,6 +289,12 @@ async def play(update: Update, context: CallbackContext) -> None:
                 "🌸 <b>Sirf short preview mila, full song nahi.</b>\n"
                 "Maine incomplete audio play nahi ki. Official full-song link try karo."
             )
+        elif "sign in to confirm" in error_text or "cookies" in error_text or "not a bot" in error_text:
+            user_text = (
+                "🌸 <b>YouTube ne cloud playback temporarily block kiya hai.</b>\n"
+                "SoundCloud ka direct link try karo. YouTube ke liye bot owner ko Render par "
+                "<code>YOUTUBE_COOKIES</code> configure karna hoga."
+            )
         elif "timed out" in error_text or "timeout" in error_text or "drm" in error_text:
             user_text = (
                 "🌸 <b>Full song source abhi respond nahi kar raha.</b>\n"
@@ -339,11 +345,19 @@ async def vplay(update: Update, context: CallbackContext) -> None:
         await _add_tracks(update, [track], status_message=status)
     except Exception as exc:
         runtime.LOGGER.warning("VC video request could not be completed: %s", exc)
-        message = (
-            "🎬 <b>Video couldn't be started.</b>\n"
-            "Try a shorter public YouTube video or another direct video link. "
-            "Long or unavailable videos may not be supported."
-        )
+        error_text = str(exc).casefold()
+        if "sign in to confirm" in error_text or "cookies" in error_text or "not a bot" in error_text:
+            message = (
+                "🎬 <b>YouTube is blocking video extraction from the cloud server.</b>\n"
+                "The video may be public, but Render needs a valid <code>YOUTUBE_COOKIES</code> "
+                "secret to fetch it. The bot owner must configure it in Render Environment."
+            )
+        else:
+            message = (
+                "🎬 <b>Video couldn't be prepared for voice-chat playback.</b>\n"
+                "Try a shorter public video or a direct MP4/video link. "
+                "Long or unavailable videos may not be supported."
+            )
         try:
             await status.edit_text(message, parse_mode="HTML")
         except Exception:
