@@ -421,6 +421,65 @@ async def change_volume(chat_id: int, level: int) -> bool:
         return True
 
 
+async def set_loop_remaining(chat_id: int, count: int) -> bool:
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        if not state or not state.get("current"):
+            return False
+        state["loop_remaining"] = count
+        return True
+
+
+async def toggle_loop(chat_id: int) -> int | None:
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        if not state or not state.get("current"):
+            return None
+        state["loop_remaining"] = 0 if state.get("loop_remaining", 0) else 1
+        return int(state["loop_remaining"])
+
+
+async def shuffle_queue(chat_id: int) -> int:
+    import random
+
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        if not state:
+            return 0
+        random.shuffle(state["queue"])
+        return len(state["queue"])
+
+
+async def clear_queue(chat_id: int) -> int:
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        if not state:
+            return 0
+        removed = len(state["queue"])
+        state["queue"].clear()
+        return removed
+
+
+async def remove_queued_track(chat_id: int, position: int) -> dict | None:
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        queue = state.get("queue", []) if state else []
+        if not 1 <= position <= len(queue):
+            return None
+        return queue.pop(position - 1)
+
+
+async def move_queued_track(chat_id: int, source: int, destination: int) -> bool:
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        queue = state.get("queue", []) if state else []
+        if not 1 <= source <= len(queue) or not 1 <= destination <= len(queue):
+            return False
+        track = queue.pop(source - 1)
+        queue.insert(destination - 1, track)
+        return True
+
+
 async def _on_stream_end(_: PyTgCalls, update: StreamEnded) -> None:
     state = _sessions.get(update.chat_id)
     if not state or not state.get("current"):
