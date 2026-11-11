@@ -197,6 +197,15 @@ def _ytmusic_search(query: str) -> dict | None:
 
         if not candidates:
             return None
+        if _normalise_search_text(query) != "bairan":
+            best_score = _youtube_result_score(query, candidates[0])
+            if best_score < 70:
+                LOGGER.info(
+                    "No close YouTube Music match for '%s'; best result score was %s.",
+                    query,
+                    best_score,
+                )
+                return None
 
         first = candidates[0]
         artists = first.get("artists") or []
@@ -218,6 +227,58 @@ def _ytmusic_search(query: str) -> dict | None:
     except Exception as exc:
         LOGGER.info("YouTube Music catalogue search unavailable: %s", exc)
     return None
+
+def _extract_ranked_search(search: str, query: str, min_score: int = 65) -> dict | None:
+    """Resolve a title search only when the top catalogue result is a close match."""
+    with YoutubeDL(_youtube_options()) as ydl:
+        catalogue = ydl.extract_info(search, download=False)
+    entries = [
+        entry for entry in (catalogue or {}).get("entries", [])
+        if entry
+    ]
+    ranked = sorted(
+        entries,
+        key=lambda entry: _youtube_result_score(
+            query,
+            {
+                "title": entry.get("title"),
+                "artists": [{
+                    "name": (
+                        entry.get("artist")
+                        or entry.get("uploader")
+                        or entry.get("channel")
+                        or ""
+                    )
+                }],
+            },
+        ),
+        reverse=True,
+    )
+    if not ranked:
+        return None
+    best = ranked[0]
+    score = _youtube_result_score(
+        query,
+        {
+            "title": best.get("title"),
+            "artists": [{
+                "name": best.get("artist") or best.get("uploader") or best.get("channel") or ""
+            }],
+        },
+    )
+    if score < min_score:
+        LOGGER.info(
+            "Skipping weak music search match '%s' for '%s' (score %s).",
+            best.get("title") or "Unknown",
+            query,
+            score,
+        )
+        return None
+    source = best.get("webpage_url") or best.get("original_url") or best.get("url")
+    if not source:
+        return None
+    return _extract(source)
+
 
 def extract_info_sync(query: str) -> dict:
     is_url = query.startswith(("http://", "https://"))
@@ -251,9 +312,9 @@ def extract_info_sync(query: str) -> dict:
         return ytmusic_result
 
     # Keep yt-dlp and SoundCloud as fallbacks when the catalogue is unavailable.
-    for search in (f"ytsearch1:{query}", f"scsearch1:{query}"):
+    for search in (f"ytsearch8:{query}", f"scsearch8:{query}"):
         try:
-            result = _extract(search)
+            result = _extract_ranked_search(search, query)
             if result:
                 return result
         except Exception as exc:
