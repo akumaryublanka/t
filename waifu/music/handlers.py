@@ -38,14 +38,14 @@ def _mix_keyboard(chat_id: int, tracks: list[dict]) -> InlineKeyboardMarkup:
         for offset in range(index, min(index + 2, len(tracks))):
             number = offset + 1
             row.append(InlineKeyboardButton(
-                f"{number} ▶️", callback_data=f"mv:mixpick:{chat_id}:{number}"
+                f"{number} ▶️", callback_data=f"mv:mixpick:{chat_id}:{number}", style="primary" if number % 2 else "success"
             ))
         rows.append(row)
     rows.append([
-        InlineKeyboardButton("➕ Queue All", callback_data=f"mv:mixall:{chat_id}"),
-        InlineKeyboardButton("🔄 Refresh", callback_data=f"mv:mix:{chat_id}"),
+        InlineKeyboardButton("➕ Queue All", callback_data=f"mv:mixall:{chat_id}", style="success"),
+        InlineKeyboardButton("🔄 Refresh", callback_data=f"mv:mix:{chat_id}", style="primary"),
     ])
-    rows.append([InlineKeyboardButton("✖ Close", callback_data=f"mv:mixclose:{chat_id}")])
+    rows.append([InlineKeyboardButton("✖ Close", callback_data=f"mv:mixclose:{chat_id}", style="danger")])
     return InlineKeyboardMarkup(rows)
 
 
