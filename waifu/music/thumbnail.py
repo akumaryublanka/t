@@ -7,6 +7,7 @@ secondary artwork tile so branding stays consistent across every track.
 
 from __future__ import annotations
 
+import base64
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO, Optional, Union
@@ -284,6 +285,19 @@ def _anime_portrait(size: tuple[int, int], accent: tuple[int, int, int]) -> Imag
     return base.convert("RGB")
 
 
+def _load_mikasa_portrait(size: tuple[int, int], accent: tuple[int, int, int]) -> Image.Image:
+    """Load the bundled Mikasa-inspired portrait; use vector fallback if unavailable."""
+    asset = Path(__file__).parent / "assets" / "mikasa_music_art.jpg.b64"
+    try:
+        encoded = asset.read_text(encoding="ascii").strip()
+        raw = base64.b64decode(encoded, validate=True)
+        with Image.open(BytesIO(raw)) as image:
+            image.load()
+            return _cover(image.convert("RGB"), size)
+    except Exception:
+        return _anime_portrait(size, accent)
+
+
 def _draw_equalizer(draw: ImageDraw.ImageDraw, x: int, y: int,
                     accent: tuple[int, int, int]) -> None:
     for i in range(28):
@@ -339,7 +353,7 @@ def create_music_thumbnail(
     # Outer frame and left portrait panel.
     draw.rounded_rectangle((18, 18, WIDTH - 18, HEIGHT - 18),
                            radius=30, outline=(*accent, 185), width=2)
-    panel = _anime_portrait((470, 570), accent)
+    panel = _load_mikasa_portrait((470, 570), accent)
     panel_mask = Image.new("L", panel.size, 0)
     ImageDraw.Draw(panel_mask).rounded_rectangle(
         (0, 0, panel.width - 1, panel.height - 1), radius=26, fill=255
