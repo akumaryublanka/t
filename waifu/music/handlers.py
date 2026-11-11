@@ -13,6 +13,7 @@ from waifu import application, db
 from waifu.music import runtime
 from waifu.music.downloader import download_audio_sync, extract_info_sync, extract_playlist_sync
 from waifu.music.formatting import duration, group_only, player_keyboard, reply
+from waifu.music.thumbnail import create_music_thumbnail
 
 
 music_favorites = db["music_favorites"]
@@ -32,6 +33,33 @@ def _playing_text(track: dict, queued: int = 0) -> str:
     if queued:
         text += f"\n\n➕ Added <b>{queued}</b> more track(s) to the queue."
     return text
+
+
+async def _reply_now_playing(update: Update, track: dict, queued: int = 0, paused: bool = False) -> None:
+    """Send the player card with generated artwork; fall back to text if image delivery fails."""
+    message = update.effective_message
+    if not message:
+        return
+    caption = _playing_text(track, queued)
+    keyboard = player_keyboard(update.effective_chat.id, paused=paused)
+    try:
+        thumbnail = await asyncio.to_thread(
+            create_music_thumbnail,
+            title=track.get("title", "Unknown Track"),
+            artist=track.get("artist") or track.get("uploader") or "Unknown Artist",
+            artwork=track.get("thumbnail"),
+            duration=track.get("duration"),
+            requester=track.get("requested_by"),
+        )
+        await message.reply_photo(
+            photo=thumbnail,
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+    except Exception:
+        runtime.LOGGER.exception("Music thumbnail delivery failed; sending text player instead")
+        await reply(update, caption, reply_markup=keyboard)
 
 
 async def _get_favorites(user_id: int) -> list[dict]:
@@ -87,11 +115,7 @@ async def _add_tracks(update: Update, tracks: list[dict]) -> None:
                 await runtime._stop_chat_locked(chat_id)
                 raise
             state["queue"].extend(remaining)
-            await reply(
-                update,
-                _playing_text(first, len(remaining)),
-                reply_markup=player_keyboard(chat_id),
-            )
+            await _reply_now_playing(update, first, len(remaining))
         else:
             state["queue"].extend(tracks)
             position = len(state["queue"]) - len(tracks) + 1
@@ -216,10 +240,10 @@ async def current(update: Update, context: CallbackContext) -> None:
     if not state or not state.get("current"):
         await reply(update, "ℹ️ Nothing is playing right now.")
         return
-    await reply(
+    await _reply_now_playing(
         update,
-        _playing_text(state["current"]),
-        reply_markup=player_keyboard(update.effective_chat.id, paused=state.get("paused", False)),
+        state["current"],
+        paused=state.get("paused", False),
     )
 
 
