@@ -103,7 +103,15 @@ async def _reply_now_playing(update: Update, track: dict, queued: int = 0, pause
             "Player artwork timed out or failed; sending the fast text player instead.",
             exc_info=True,
         )
-        await reply(update, caption, reply_markup=keyboard)
+        try:
+            await reply(update, caption, reply_markup=keyboard)
+        except Exception:
+            # Playback is already active. A Telegram status-message failure
+            # must never be reported as a failed music request.
+            runtime.LOGGER.warning(
+                "Could not send the now-playing message after playback started.",
+                exc_info=True,
+            )
 
 
 async def _get_favorites(user_id: int) -> list[dict]:
