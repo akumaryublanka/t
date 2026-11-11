@@ -62,23 +62,18 @@ def _new_state() -> dict:
 
 
 def _playing_text(track: dict, queued: int = 0) -> str:
-    artist = track.get("artist") or track.get("uploader")
+    title = escape(str(track.get("title") or "Unknown Track"))
+    requester = escape(str(track.get("requested_by") or "Unknown"))
+    heading = "🎬 <b>VIDEO STARTED STREAMING</b>" if track.get("media_type") == "video" else "➜ <b>STARTED STREAMING</b>"
     text = (
-        "🎶 <b>MIKASAVERSE · NOW PLAYING</b>\n"
-        f"🎧 {escape(track['title'])}"
+        f"{heading} |\n\n"
+        f"▸ <b>TITLE:</b> {title}\n"
+        f"▸ <b>DURATION:</b> {duration(track.get('duration'))} MINUTES\n"
+        f"▸ <b>REQUESTED BY:</b> {requester}"
     )
-    if artist and str(artist).strip().lower() not in str(track["title"]).strip().lower():
-        text += f"\n🎤 {escape(str(artist))}"
-    text += (
-        f"\n⏱️ {duration(track.get('duration'))}"
-        f"\n👤 Requested by {escape(track.get('requested_by', 'Unknown'))}"
-    )
-    if track.get("media_type") == "video":
-        text = text.replace("🎶 <b>MIKASAVERSE · NOW PLAYING</b>", "🎬 <b>MIKASAVERSE · VIDEO IN VC</b>")
     if queued:
         text += f"\n\n➕ Added <b>{queued}</b> more track(s) to the queue."
     return text
-
 
 async def _reply_now_playing(update: Update, track: dict, queued: int = 0, paused: bool = False) -> None:
     """Send the artwork card quickly; fall back to text if image work is slow."""
@@ -555,12 +550,12 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
 
     state = await runtime.session_snapshot(chat_id)
 
-    if action == "mixclose":
+    if action in {"mixclose", "close"}:
         try:
             await query.message.edit_reply_markup(reply_markup=None)
         except Exception:
             pass
-        await query.answer("MIKASA MIX closed")
+        await query.answer("Player closed" if action == "close" else "MIKASA MIX closed")
         return
 
     if action == "autoplay":
