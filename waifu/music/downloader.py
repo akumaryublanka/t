@@ -561,7 +561,7 @@ def download_video_sync(
         # Android and web clients increasingly return formats that need PO
         # tokens. Try token-free clients separately, then continue to the next
         # catalogue result if this particular video is unavailable.
-        clients = ("tv", "android_vr") if candidate.get("id") else (None,)
+        clients = ("tv", "android_vr") if (candidate.get("id") or candidate.get("search")) else (None,)
         for player_client in clients:
             temp_dir = tempfile.mkdtemp(prefix="mikasa-vplay-")
             options = {
