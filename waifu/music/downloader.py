@@ -24,8 +24,11 @@ def _best_thumbnail(info: dict | None) -> str | None:
         url = item.get("url")
         if not isinstance(url, str) or not url.startswith(("http://", "https://")):
             continue
-        width = int(item.get("width") or 0)
-        height = int(item.get("height") or 0)
+        try:
+            width = int(item.get("width") or 0)
+            height = int(item.get("height") or 0)
+        except (TypeError, ValueError):
+            width = height = 0
         candidates.append((width * height, url))
     return max(candidates, default=(0, None))[1]
 
@@ -108,14 +111,13 @@ def _ytmusic_search(query: str) -> dict | None:
             for artist_item in artists
             if artist_item.get("name")
         )
-        title = first.get("title") or query
-        if artist:
-            title = f"{title} - {artist}"
         return {
             "source": f"https://music.youtube.com/watch?v={first['videoId']}",
-            "title": title,
+            "title": first.get("title") or query,
             "duration": first.get("duration_seconds"),
+            "artist": artist or None,
             "uploader": artist or None,
+            "thumbnail": _best_thumbnail(first),
             "ytmusic_candidates": [item["videoId"] for item in candidates[:5]],
             "search_query": query,
         }
@@ -306,11 +308,15 @@ def _download_ytmusic_audio(
     except (TypeError, ValueError):
         track_duration = None
 
+    thumb_info = details.get("thumbnail") or {}
+    thumb_list = thumb_info.get("thumbnails", []) if isinstance(thumb_info, dict) else thumb_info
     return {
         "path": audio_path,
         "title": title,
         "duration": track_duration,
+        "artist": details.get("author"),
         "uploader": details.get("author"),
+        "thumbnail": _best_thumbnail({"thumbnails": thumb_list}),
         "source": f"https://music.youtube.com/watch?v={video_id}",
         "mime_type": selected.get("mimeType"),
     }
@@ -388,7 +394,9 @@ def download_track_sync(
                 "temp_dir": temp_dir,
                 "title": (info or {}).get("title") or "Unknown track",
                 "duration": int(info["duration"]) if (info or {}).get("duration") else None,
-                "uploader": (info or {}).get("artist") or (info or {}).get("uploader"),
+                "artist": _artist_name(info or {}),
+                "uploader": (info or {}).get("uploader"),
+                "thumbnail": _best_thumbnail(info or {}),
                 "source": (info or {}).get("webpage_url") or (info or {}).get("original_url") or source,
             }
         except Exception as exc:
