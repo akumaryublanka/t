@@ -162,8 +162,21 @@ def _download_ytmusic_audio(source: str, temp_dir: str, max_bytes: int) -> dict 
     video_id = _youtube_video_id(source)
     selected = None
 
+    # YouTube's signed audio URLs can be invalid when ytmusicapi uses its
+    # fallback signature timestamp. Fetch the current value before get_song.
+    # If YouTube changes the base.js endpoint temporarily, retain the library
+    # fallback rather than disabling playback altogether.
+    try:
+        signature_timestamp = ytm.get_signatureTimestamp()
+    except Exception as exc:
+        LOGGER.warning("Could not refresh YouTube signature timestamp: %s", exc)
+        signature_timestamp = None
+
+    def get_song_with_fresh_signature(candidate_id: str) -> dict:
+        return ytm.get_song(candidate_id, signatureTimestamp=signature_timestamp)
+
     if video_id:
-        metadata = ytm.get_song(video_id)
+        metadata = get_song_with_fresh_signature(video_id)
     else:
         results = ytm.search(source, filter="songs", limit=5)
         metadata = None
@@ -171,7 +184,7 @@ def _download_ytmusic_audio(source: str, temp_dir: str, max_bytes: int) -> dict 
             candidate_id = result.get("videoId")
             if candidate_id and result.get("isAvailable") is not False:
                 try:
-                    candidate = ytm.get_song(candidate_id)
+                    candidate = get_song_with_fresh_signature(candidate_id)
                     formats = (candidate.get("streamingData") or {}).get("adaptiveFormats") or []
                     if any(item.get("url") and item.get("mimeType", "").startswith("audio/") for item in formats):
                         metadata = candidate
