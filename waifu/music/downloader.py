@@ -7,6 +7,38 @@ from yt_dlp import YoutubeDL
 LOGGER = logging.getLogger("waifu.music")
 
 
+def _best_thumbnail(info: dict | None) -> str | None:
+    """Pick the largest usable thumbnail URL from yt-dlp/YouTube Music metadata."""
+    if not isinstance(info, dict):
+        return None
+    direct = info.get("thumbnail")
+    if isinstance(direct, str) and direct.startswith(("http://", "https://")):
+        return direct
+    candidates = []
+    raw = info.get("thumbnails") or []
+    if isinstance(raw, dict):
+        raw = raw.get("thumbnails") or []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+            continue
+        width = int(item.get("width") or 0)
+        height = int(item.get("height") or 0)
+        candidates.append((width * height, url))
+    return max(candidates, default=(0, None))[1]
+
+
+def _artist_name(info: dict | None) -> str | None:
+    if not isinstance(info, dict):
+        return None
+    artist = info.get("artist") or info.get("creator") or info.get("uploader")
+    if isinstance(artist, (list, tuple)):
+        artist = ", ".join(str(value) for value in artist if value)
+    return str(artist).strip() if artist else None
+
+
 def _youtube_options() -> dict:
     """Prefer YouTube clients that can work without a logged-in session."""
     return {
@@ -40,6 +72,9 @@ def _extract(search: str) -> dict | None:
             "source": source,
             "title": info.get("title") or "Unknown track",
             "duration": int(info["duration"]) if info.get("duration") else None,
+            "artist": _artist_name(info),
+            "uploader": info.get("uploader"),
+            "thumbnail": _best_thumbnail(info),
         }
 
 
@@ -87,14 +122,15 @@ def _ytmusic_search(query: str) -> dict | None:
                 for artist_item in artists
                 if artist_item.get("name")
             )
-            title = item.get("title") or query
-            if artist:
-                title = f"{title} - {artist}"
+            thumbnails = item.get("thumbnails") or []
+            thumbnail = _best_thumbnail({"thumbnails": thumbnails})
             return {
                 "source": f"https://music.youtube.com/watch?v={video_id}",
-                "title": title,
+                "title": item.get("title") or query,
                 "duration": item.get("duration_seconds"),
+                "artist": artist or None,
                 "uploader": artist or None,
+                "thumbnail": thumbnail,
             }
     except Exception as exc:
         LOGGER.info("YouTube Music catalogue search unavailable: %s", exc)
@@ -406,6 +442,9 @@ def extract_playlist_sync(query: str, max_tracks: int = 20) -> list[dict]:
                 "source": source,
                 "title": entry.get("title") or "Unknown track",
                 "duration": int(entry["duration"]) if entry.get("duration") else None,
+                "artist": _artist_name(entry),
+                "uploader": entry.get("uploader"),
+                "thumbnail": _best_thumbnail(entry),
             }
         )
         if len(tracks) >= max_tracks:
