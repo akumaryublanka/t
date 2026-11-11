@@ -512,7 +512,7 @@ def _download_ytmusic_audio(
     from ytmusicapi import YTMusic
 
     session = requests.Session()
-    session.request = partial(session.request, timeout=(3, 7))
+    session.request = partial(session.request, timeout=(5, 18))
     ytm = YTMusic(language="en", location="IN", requests_session=session)
 
     direct_id = _youtube_video_id(source)
@@ -733,6 +733,11 @@ def download_track_sync(
             shutil.rmtree(ytm_temp_dir, ignore_errors=True)
             LOGGER.warning("YouTube Music API playback path unavailable: %s", exc)
 
+        if ytmusic_error and "preview" in str(ytmusic_error).casefold():
+            raise RuntimeError(
+                f"{ytmusic_error} Refusing a partial track."
+            ) from ytmusic_error
+
     query = fallback_query or (None if is_url else source)
     searches = (
         [(f"scsearch5:{query}", query)]
@@ -821,6 +826,45 @@ def download_track_sync(
                 raise RuntimeError("The downloaded audio file is empty.")
             if size > max_bytes:
                 raise ValueError("The song is too large for safe voice-chat streaming.")
+
+            # The title search may return a short social-media preview.
+            # Compare container duration to the catalogue's expected duration.
+            if expected_duration:
+                measured_duration = None
+                try:
+                    import subprocess
+                    ffprobe = shutil.which("ffprobe")
+                    if ffprobe:
+                        probe = subprocess.run(
+                            [
+                                ffprobe, "-v", "error",
+                                "-show_entries", "format=duration",
+                                "-of", "default=noprint_wrappers=1:nokey=1",
+                                audio_path,
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=6,
+                            check=False,
+                        )
+                        if probe.returncode == 0 and probe.stdout.strip():
+                            measured_duration = int(float(probe.stdout.strip()))
+                except Exception:
+                    LOGGER.debug("Could not probe fallback audio duration.", exc_info=True)
+
+                try:
+                    metadata_duration = int((info or {}).get("duration") or 0) or None
+                except (TypeError, ValueError):
+                    metadata_duration = None
+                actual_duration = measured_duration or metadata_duration
+                minimum_duration = max(60, int(expected_duration * 0.75))
+                if not actual_duration or actual_duration < minimum_duration:
+                    raise RuntimeError(
+                        "Only a short preview was returned "
+                        f"({actual_duration or 'unknown'} seconds); "
+                        f"the full track should be about {expected_duration} seconds."
+                    )
+
             return {
                 "path": audio_path,
                 "temp_dir": temp_dir,
