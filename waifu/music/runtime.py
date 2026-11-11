@@ -356,7 +356,7 @@ async def _download_track(track: dict, chat_id: int) -> dict:
 
 
 async def _start_track(chat_id: int, track: dict) -> None:
-    """Start one track. All callers must hold the chat lock."""
+    """Prepare media outside the chat lock; lock only the final state/stream swap."""
     if _calls is None:
         raise RuntimeError("Music assistant is not connected.")
 
@@ -382,22 +382,26 @@ async def _start_track(chat_id: int, track: dict) -> None:
                 track[key] = downloaded[key]
 
         media_kind = downloaded.get("media_type") or track.get("media_type", "audio")
-        await _calls.play(
-            chat_id,
-            _media_stream(path, media_kind),
-            GroupCallConfig(auto_start=False),
-        )
+        async with _chat_locks[chat_id]:
+            # A /end command may have removed this session while the download ran.
+            if _sessions.get(chat_id) is not state or not state.get("transitioning"):
+                raise RuntimeError("This playback request was cancelled.")
+            await _calls.play(
+                chat_id,
+                _media_stream(path, media_kind),
+                GroupCallConfig(auto_start=False),
+            )
 
-        old_temp_dir = state.get("active_temp_dir")
-        state["current"] = track
-        state["active_temp_dir"] = temp_dir
-        state["active_path"] = path
-        state["active_kind"] = media_kind
-        state["paused"] = False
-        state["generation"] = int(state.get("generation", 0)) + 1
-        state["started_at"] = asyncio.get_running_loop().time()
-        state["transitioning"] = False
-        state["recovering"] = False
+            old_temp_dir = state.get("active_temp_dir")
+            state["current"] = track
+            state["active_temp_dir"] = temp_dir
+            state["active_path"] = path
+            state["active_kind"] = media_kind
+            state["paused"] = False
+            state["generation"] = int(state.get("generation", 0)) + 1
+            state["started_at"] = asyncio.get_running_loop().time()
+            state["transitioning"] = False
+            state["recovering"] = False
 
         if old_temp_dir and old_temp_dir != temp_dir:
             await _cleanup_temp_dir(old_temp_dir)
@@ -409,9 +413,10 @@ async def _start_track(chat_id: int, track: dict) -> None:
             state["generation"],
         )
     except BaseException:
-        state["transitioning"] = False
         if downloaded:
             await _cleanup_temp_dir(downloaded.get("temp_dir"))
+        # Keep the transition reserved until the caller either tries the next
+        # queued item or clears the failed initial/replay request.
         raise
 
 
@@ -421,8 +426,16 @@ async def replay_current(chat_id: int) -> bool:
         if not state or not state.get("current") or state.get("transitioning"):
             return False
         track = dict(state["current"])
+        state["transitioning"] = True
+
+    try:
         await _start_track(chat_id, track)
         return True
+    except Exception:
+        async with _chat_locks[chat_id]:
+            if _sessions.get(chat_id) is state:
+                state["transitioning"] = False
+        raise
 
 
 async def advance_queue(
@@ -433,7 +446,7 @@ async def advance_queue(
     expected_generation: int | None = None,
     natural_end: bool = False,
 ) -> bool:
-    """Advance once; generation checks coalesce simultaneous skip/end events."""
+    """Reserve the next transition briefly; never hold the chat lock during downloads."""
     async with _chat_locks[chat_id]:
         state = _sessions.get(chat_id)
         if not state or not state.get("current") or state.get("transitioning"):
@@ -455,62 +468,44 @@ async def advance_queue(
         state["transitioning"] = True
         if force_skip:
             state["loop_remaining"] = 0
+        remaining = int(state.get("loop_remaining", 0))
+        if not force_skip and remaining > 0:
+            state["loop_remaining"] = remaining - 1
+            next_track = dict(state["current"])
         else:
-            current = state.get("current")
-            remaining = int(state.get("loop_remaining", 0))
-            if current and remaining > 0:
-                state["loop_remaining"] = remaining - 1
-                try:
-                    await _start_track(chat_id, dict(current))
-                    if announce:
-                        await _send_now_playing(chat_id, current)
-                    return True
-                except Exception:
-                    LOGGER.exception("Could not repeat the current track in %s", chat_id)
+            next_track = state["queue"].pop(0) if state.get("queue") else None
+        state_ref = state
 
-        if not state.get("queue") and state.get("autoplay"):
-            try:
-                seed_track = dict(state.get("current") or {})
-                seen_ids = list(state.get("autoplay_seen") or [])
-                auto_tracks = await asyncio.wait_for(
-                    asyncio.to_thread(get_related_tracks_sync, seed_track, 5, seen_ids),
-                    timeout=20,
+    while next_track is not None:
+        try:
+            await _start_track(chat_id, next_track)
+            if announce:
+                await _send_now_playing(chat_id, next_track)
+            return True
+        except Exception:
+            LOGGER.exception("Could not start the next track in %s", chat_id)
+            async with _chat_locks[chat_id]:
+                live_state = _sessions.get(chat_id)
+                if live_state is not state_ref:
+                    return False
+                # _start_track deliberately leaves the transition reserved on failure.
+                next_track = (
+                    live_state["queue"].pop(0)
+                    if live_state.get("queue")
+                    else None
                 )
-                if auto_tracks:
-                    state["queue"].extend(auto_tracks)
-                    state["autoplay_seen"] = list(dict.fromkeys(
-                        seen_ids + [
-                            str(track.get("video_id"))
-                            for track in auto_tracks
-                            if track.get("video_id")
-                        ]
-                    ))[-60:]
-                    LOGGER.info(
-                        "Auto Mix queued %s related tracks in chat %s.",
-                        len(auto_tracks), chat_id,
-                    )
-            except asyncio.TimeoutError:
-                LOGGER.warning("Auto Mix lookup timed out in chat %s.", chat_id)
-            except Exception:
-                LOGGER.exception("Auto Mix lookup failed in chat %s.", chat_id)
 
-        while state.get("queue"):
-            next_track = state["queue"].pop(0)
-            try:
-                await _start_track(chat_id, next_track)
-                if announce:
-                    await _send_now_playing(chat_id, next_track)
-                return True
-            except Exception:
-                LOGGER.exception("Could not start the next queued track in %s", chat_id)
-
-        await _stop_chat_locked(chat_id)
-        if announce:
-            await _send_chat_message(
-                chat_id,
-                "🏁 <b>Queue finished.</b> MikasaVerse left the voice chat.",
-            )
-        return True
+    async with _chat_locks[chat_id]:
+        if _sessions.get(chat_id) is state_ref:
+            await _stop_chat_locked(chat_id)
+        else:
+            return False
+    if announce:
+        await _send_chat_message(
+            chat_id,
+            "🏁 <b>Queue finished.</b> MikasaVerse left the voice chat.",
+        )
+    return True
 
 
 async def skip_current(chat_id: int) -> bool:
