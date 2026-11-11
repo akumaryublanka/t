@@ -284,6 +284,11 @@ async def play(update: Update, context: CallbackContext) -> None:
                 "Pehle group mein Voice Chat ON karo, phir <code>/play</code> dobara bhejo. "
                 "Assistant khud join karke music play karega."
             )
+        elif "short preview" in error_text or "full song could not be verified" in error_text:
+            user_text = (
+                "🌸 <b>Sirf short preview mila, full song nahi.</b>\n"
+                "Maine incomplete audio play nahi ki. Official full-song link try karo."
+            )
         else:
             user_text = (
                 "🌸 <b>Ye track abhi play nahi ho pa raha.</b>\n"
