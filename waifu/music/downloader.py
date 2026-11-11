@@ -122,8 +122,6 @@ def _ytmusic_search(query: str) -> dict | None:
             "thumbnail": _best_thumbnail(first),
             "ytmusic_candidates": [item["videoId"] for item in candidates[:4]],
             "search_query": query,
-            "artist": artist or None,
-            "thumbnail": _best_thumbnail(first),
         }
     except Exception as exc:
         LOGGER.info("YouTube Music catalogue search unavailable: %s", exc)
