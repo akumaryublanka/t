@@ -151,7 +151,7 @@ async def _send_chat_message(chat_id: int, text: str, reply_markup=None) -> None
 
 
 async def _send_now_playing(chat_id: int, track: dict) -> None:
-    """Send an anime-style photo player card when a queued track starts."""
+    """Send the anime-style player card without delaying the queue transition."""
     artist = track.get("artist") or track.get("uploader") or "Unknown Artist"
     heading = (
         "🎬 <b>MIKASAVERSE · VIDEO IN VC</b>"
@@ -168,7 +168,8 @@ async def _send_now_playing(chat_id: int, track: dict) -> None:
         f"\n⏱️ {duration(track.get('duration'))}"
         f"\n👤 Requested by {escape(track.get('requested_by', 'Unknown'))}"
     )
-    try:
+
+    async def send_card() -> None:
         image = await asyncio.to_thread(
             create_music_thumbnail,
             title=track.get("title", "Unknown track"),
@@ -182,25 +183,22 @@ async def _send_now_playing(chat_id: int, track: dict) -> None:
             photo=image,
             caption=caption,
             parse_mode="HTML",
-            reply_markup=player_keyboard(
-                chat_id,
-                autoplay=bool((_sessions.get(chat_id) or {}).get("autoplay", False)),
-            ),
+            reply_markup=player_keyboard(chat_id),
         )
+
+    try:
+        await asyncio.wait_for(send_card(), timeout=4.0)
     except Exception:
-        LOGGER.exception("Could not send queued music thumbnail in %s.", chat_id)
+        LOGGER.info("Player artwork timed out or failed; using text player.", exc_info=True)
         await _send_chat_message(
             chat_id,
             caption,
-            reply_markup=player_keyboard(
-                chat_id,
-                autoplay=bool((_sessions.get(chat_id) or {}).get("autoplay", False)),
-            ),
+            reply_markup=player_keyboard(chat_id),
         )
 
 
 async def _find_chat_in_dialogs(chat_id: int) -> bool:
-    """Resolve a group peer from the assistant account's Telegram dialogs."""
+    """Last-resort peer lookup; avoid scanning every dialog on normal playback."""
     if _music_client is None:
         return False
     async for dialog in _music_client.get_dialogs():
@@ -212,13 +210,20 @@ async def _find_chat_in_dialogs(chat_id: int) -> bool:
 
 
 async def _ensure_chat_peer(chat_id: int) -> None:
-    """Join the group using a temporary invite created by the main bot."""
+    """Resolve a known peer directly, otherwise join with a one-use invite."""
     if _music_client is None:
         raise RuntimeError("The music assistant Telegram session is not running.")
     if chat_id in _resolved_chat_peers:
         return
-    if await _find_chat_in_dialogs(chat_id):
+
+    # get_chat is a direct lookup and avoids the slow full-dialog scan when the
+    # assistant has already seen this group in its local peer database.
+    try:
+        await _music_client.get_chat(chat_id)
+        _resolved_chat_peers.add(chat_id)
         return
+    except Exception:
+        pass
 
     invite_link = None
     try:
@@ -237,17 +242,26 @@ async def _ensure_chat_peer(chat_id: int) -> None:
                 LOGGER.warning("Could not leave an unexpected chat joined via invite link.")
             raise RuntimeError("The generated invite link did not lead to the command group.")
 
-        if joined_chat_id == chat_id or await _find_chat_in_dialogs(chat_id):
+        if joined_chat_id == chat_id:
             _resolved_chat_peers.add(chat_id)
             LOGGER.info("Music assistant automatically joined group %s.", chat_id)
+            return
+        # Rare case: the assistant was already a participant but its peer wasn't cached.
+        if await _music_client.get_chat(chat_id):
+            _resolved_chat_peers.add(chat_id)
             return
         raise RuntimeError("Telegram did not confirm that the assistant joined this group.")
     except Exception as exc:
         try:
-            if await _find_chat_in_dialogs(chat_id):
+            if await _music_client.get_chat(chat_id):
+                _resolved_chat_peers.add(chat_id)
                 return
         except Exception:
-            LOGGER.debug("Could not refresh assistant dialogs after auto-join failure.", exc_info=True)
+            try:
+                if await _find_chat_in_dialogs(chat_id):
+                    return
+            except Exception:
+                LOGGER.debug("Could not refresh assistant dialogs after auto-join failure.", exc_info=True)
         raise RuntimeError(
             "Automatic group join failed. Make sure the main MikasaVerse bot is an admin "
             "with Invite Users permission, and that the group allows the assistant to join."
