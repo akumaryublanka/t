@@ -365,6 +365,123 @@ def _youtube_video_id(source: str) -> str | None:
     return None
 
 
+def _track_duration_seconds(value) -> int | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return max(0, int(value))
+    try:
+        total = 0
+        for part in str(value).strip().split(":"):
+            total = total * 60 + int(part)
+        return max(0, total)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_related_tracks_sync(
+    seed_track: dict,
+    limit: int = 5,
+    exclude_ids: list[str] | None = None,
+) -> list[dict]:
+    """Return songs from the current track's YouTube Music radio/watch list."""
+    try:
+        import requests
+        from functools import partial
+        from ytmusicapi import YTMusic
+
+        session = requests.Session()
+        session.request = partial(session.request, timeout=(4, 10))
+        client = YTMusic(language="en", location="IN", requests_session=session)
+
+        seed_track = seed_track if isinstance(seed_track, dict) else {}
+        source = str(seed_track.get("source") or "")
+        video_id = seed_track.get("video_id") or _youtube_video_id(source)
+        if not video_id:
+            candidates = seed_track.get("ytmusic_candidates") or []
+            video_id = candidates[0] if candidates else None
+
+        seed_title = str(seed_track.get("title") or "").strip()
+        seed_artist = str(seed_track.get("artist") or seed_track.get("uploader") or "").strip()
+        excluded = {str(value) for value in (exclude_ids or []) if value}
+        if video_id:
+            excluded.add(str(video_id))
+
+        items = []
+        if video_id:
+            try:
+                watch = client.get_watch_playlist(
+                    videoId=video_id,
+                    limit=max(15, int(limit) * 3),
+                    radio=True,
+                )
+                items = watch.get("tracks") or []
+            except Exception as exc:
+                LOGGER.info("YouTube Music radio lookup failed: %s", exc)
+
+        # SoundCloud and non-YouTube seeds do not have a videoId. Use the same
+        # artist's song catalogue as a graceful fallback.
+        if len(items) < limit:
+            search_query = seed_artist or seed_title
+            if search_query:
+                try:
+                    items.extend(client.search(
+                        search_query, filter="songs", limit=max(12, int(limit) * 3)
+                    ) or [])
+                except Exception as exc:
+                    LOGGER.info("YouTube Music related-song search failed: %s", exc)
+
+        result, seen = [], set()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            candidate_id = item.get("videoId")
+            title = str(item.get("title") or "").strip()
+            if not candidate_id or not title or str(candidate_id) in excluded:
+                continue
+            if str(candidate_id) in seen or item.get("isAvailable") is False:
+                continue
+            if _normalise_search_text(title) == _normalise_search_text(seed_title):
+                continue
+
+            artist_items = item.get("artists") or []
+            if isinstance(artist_items, list):
+                artist = ", ".join(
+                    str(value.get("name") or "").strip()
+                    for value in artist_items
+                    if isinstance(value, dict) and value.get("name")
+                )
+            else:
+                artist = str(artist_items or "")
+            if not artist:
+                artist = str(item.get("byline") or "").split(" • ", 1)[0].strip()
+
+            thumbnail_data = item.get("thumbnail") or item.get("thumbnails")
+            thumb_info = {"thumbnails": thumbnail_data} if isinstance(thumbnail_data, list) else item
+            duration_value = item.get("duration_seconds")
+            if duration_value is None:
+                duration_value = item.get("length") or item.get("duration")
+
+            result.append({
+                "source": f"https://music.youtube.com/watch?v={candidate_id}",
+                "video_id": str(candidate_id),
+                "title": title,
+                "duration": _track_duration_seconds(duration_value),
+                "artist": artist or None,
+                "uploader": artist or None,
+                "thumbnail": _best_thumbnail(thumb_info),
+                "ytmusic_candidates": [str(candidate_id)],
+                "search_query": title,
+            })
+            seen.add(str(candidate_id))
+            if len(result) >= max(1, min(int(limit), 10)):
+                break
+        return result
+    except Exception as exc:
+        LOGGER.info("Could not build a YouTube Music related mix: %s", exc)
+        return []
+
+
 def _download_ytmusic_audio(
     source: str,
     temp_dir: str,

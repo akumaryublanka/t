@@ -14,7 +14,7 @@ from pytgcalls.types import AudioQuality, GroupCallConfig, MediaStream, StreamEn
 
 from waifu import application
 from waifu.music.config import get_music_credentials
-from waifu.music.downloader import download_track_sync, download_video_sync
+from waifu.music.downloader import download_track_sync, download_video_sync, get_related_tracks_sync
 from waifu.music.formatting import duration, player_keyboard
 from waifu.music.thumbnail import create_music_thumbnail
 
@@ -47,6 +47,8 @@ def _new_state() -> dict:
         "started_at": 0.0,
         "transitioning": False,
         "recovering": False,
+        "autoplay": False,
+        "autoplay_seen": [],
     }
 
 
@@ -180,7 +182,10 @@ async def _send_now_playing(chat_id: int, track: dict) -> None:
             photo=image,
             caption=caption,
             parse_mode="HTML",
-            reply_markup=player_keyboard(chat_id),
+            reply_markup=player_keyboard(
+                chat_id,
+                autoplay=bool((_sessions.get(chat_id) or {}).get("autoplay", False)),
+            ),
         )
     except Exception:
         LOGGER.exception("Could not send queued music thumbnail in %s.", chat_id)
@@ -460,6 +465,32 @@ async def advance_queue(
                 except Exception:
                     LOGGER.exception("Could not repeat the current track in %s", chat_id)
 
+        if not state.get("queue") and state.get("autoplay"):
+            try:
+                seed_track = dict(state.get("current") or {})
+                seen_ids = list(state.get("autoplay_seen") or [])
+                auto_tracks = await asyncio.wait_for(
+                    asyncio.to_thread(get_related_tracks_sync, seed_track, 5, seen_ids),
+                    timeout=20,
+                )
+                if auto_tracks:
+                    state["queue"].extend(auto_tracks)
+                    state["autoplay_seen"] = list(dict.fromkeys(
+                        seen_ids + [
+                            str(track.get("video_id"))
+                            for track in auto_tracks
+                            if track.get("video_id")
+                        ]
+                    ))[-60:]
+                    LOGGER.info(
+                        "Auto Mix queued %s related tracks in chat %s.",
+                        len(auto_tracks), chat_id,
+                    )
+            except asyncio.TimeoutError:
+                LOGGER.warning("Auto Mix lookup timed out in chat %s.", chat_id)
+            except Exception:
+                LOGGER.exception("Auto Mix lookup failed in chat %s.", chat_id)
+
         while state.get("queue"):
             next_track = state["queue"].pop(0)
             try:
@@ -540,6 +571,19 @@ async def toggle_loop(chat_id: int) -> int | None:
             return None
         state["loop_remaining"] = 0 if state.get("loop_remaining", 0) else 1
         return int(state["loop_remaining"])
+
+
+async def toggle_autoplay(chat_id: int) -> bool | None:
+    """Enable or disable automatic YouTube Music radio when the queue ends."""
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        if not state or not state.get("current"):
+            return None
+        enabled = not bool(state.get("autoplay", False))
+        state["autoplay"] = enabled
+        if enabled:
+            state["autoplay_seen"] = []
+        return enabled
 
 
 async def shuffle_queue(chat_id: int) -> int:
@@ -640,7 +684,10 @@ async def _recover_disconnected_chat(chat_id: int, generation: int, rejoin_group
         await _send_chat_message(
             chat_id,
             f"🔄 <b>Music connection restored.</b>\n🎵 Restarted: {escape(title)}",
-            reply_markup=player_keyboard(chat_id),
+            reply_markup=player_keyboard(
+                chat_id,
+                autoplay=bool(state.get("autoplay", False)),
+            ),
         )
         return
     except Exception as exc:

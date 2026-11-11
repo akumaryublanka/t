@@ -17,9 +17,14 @@ def group_only(update: Update) -> bool:
     return bool(chat and chat.type in ("group", "supergroup"))
 
 
-def player_keyboard(chat_id: int, paused: bool = False) -> InlineKeyboardMarkup:
+def player_keyboard(
+    chat_id: int,
+    paused: bool = False,
+    autoplay: bool = False,
+) -> InlineKeyboardMarkup:
     toggle = "resume" if paused else "pause"
     toggle_label = "▶️ Resume" if paused else "⏸ Pause"
+    autoplay_label = "🎧 Auto Mix: ON" if autoplay else "🎧 Auto Mix: OFF"
     return InlineKeyboardMarkup(
         [
             [
@@ -34,6 +39,10 @@ def player_keyboard(chat_id: int, paused: bool = False) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton("📃 Queue", callback_data=f"mv:queue:{chat_id}"),
                 InlineKeyboardButton("❤️ Save", callback_data=f"mv:fav:{chat_id}"),
+            ],
+            [
+                InlineKeyboardButton("✨ MIKASA MIX", callback_data=f"mv:mix:{chat_id}"),
+                InlineKeyboardButton(autoplay_label, callback_data=f"mv:autoplay:{chat_id}"),
             ],
         ]
     )

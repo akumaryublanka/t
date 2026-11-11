@@ -6,21 +6,59 @@ import shutil
 from datetime import datetime, timezone
 from html import escape
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler
 
 from waifu import application, db
 from waifu.music import runtime
-from waifu.music.downloader import download_audio_sync, extract_info_sync, extract_playlist_sync
+from waifu.music.downloader import (
+    download_audio_sync,
+    extract_info_sync,
+    extract_playlist_sync,
+    get_related_tracks_sync,
+)
 from waifu.music.formatting import duration, group_only, player_keyboard, reply
 from waifu.music.thumbnail import create_music_thumbnail
 
 
 music_favorites = db["music_favorites"]
+_MIX_CACHE: dict[int, dict] = {}
+
+
+def _track_key(track: dict | None) -> str:
+    if not track:
+        return ""
+    return str(track.get("source") or track.get("title") or "")
+
+
+def _mix_keyboard(chat_id: int, tracks: list[dict]) -> InlineKeyboardMarkup:
+    rows = []
+    for index in range(0, len(tracks), 2):
+        row = []
+        for offset in range(index, min(index + 2, len(tracks))):
+            number = offset + 1
+            row.append(InlineKeyboardButton(
+                f"{number} ▶️", callback_data=f"mv:mixpick:{chat_id}:{number}"
+            ))
+        rows.append(row)
+    rows.append([
+        InlineKeyboardButton("➕ Queue All", callback_data=f"mv:mixall:{chat_id}"),
+        InlineKeyboardButton("🔄 Refresh", callback_data=f"mv:mix:{chat_id}"),
+    ])
+    rows.append([InlineKeyboardButton("✖ Close", callback_data=f"mv:mixclose:{chat_id}")])
+    return InlineKeyboardMarkup(rows)
 
 
 def _new_state() -> dict:
-    return {"current": None, "queue": [], "volume": 100, "loop_remaining": 0, "paused": False}
+    return {
+        "current": None,
+        "queue": [],
+        "volume": 100,
+        "loop_remaining": 0,
+        "paused": False,
+        "autoplay": False,
+        "autoplay_seen": [],
+    }
 
 
 def _playing_text(track: dict, queued: int = 0) -> str:
@@ -48,7 +86,12 @@ async def _reply_now_playing(update: Update, track: dict, queued: int = 0, pause
     if not message:
         return
     caption = _playing_text(track, queued)
-    keyboard = player_keyboard(update.effective_chat.id, paused=paused)
+    live_state = runtime.get_session(update.effective_chat.id) or {}
+    keyboard = player_keyboard(
+        update.effective_chat.id,
+        paused=paused,
+        autoplay=bool(live_state.get("autoplay", False)),
+    )
     try:
         thumbnail = await asyncio.to_thread(
             create_music_thumbnail,
@@ -337,7 +380,11 @@ async def queue(update: Update, context: CallbackContext) -> None:
         )
     if len(state["queue"]) > 15:
         lines.append(f"…and {len(state['queue']) - 15} more track(s)")
-    await reply(update, "\n".join(lines), reply_markup=player_keyboard(update.effective_chat.id, paused=state.get("paused", False)))
+    await reply(update, "\n".join(lines), reply_markup=player_keyboard(
+            update.effective_chat.id,
+            paused=state.get("paused", False),
+            autoplay=state.get("autoplay", False),
+        ))
 
 
 async def current(update: Update, context: CallbackContext) -> None:
@@ -456,7 +503,11 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
     if not query or not query.message:
         return
     try:
-        _, action, raw_chat_id = query.data.split(":")
+        parts = str(query.data or "").split(":")
+        if len(parts) not in (3, 4):
+            raise ValueError("Invalid callback shape")
+        _, action, raw_chat_id = parts[:3]
+        extra = parts[3] if len(parts) == 4 else None
         chat_id = int(raw_chat_id)
     except (ValueError, AttributeError):
         await query.answer("Invalid music control.", show_alert=True)
@@ -466,6 +517,116 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
         return
 
     state = await runtime.session_snapshot(chat_id)
+
+    if action == "mixclose":
+        try:
+            await query.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await query.answer("MIKASA MIX closed")
+        return
+
+    if action == "autoplay":
+        if not state or not state.get("current"):
+            await query.answer("Nothing is playing.", show_alert=True)
+            return
+        enabled = await runtime.toggle_autoplay(chat_id)
+        if enabled is None:
+            await query.answer("Nothing is playing.", show_alert=True)
+            return
+        await query.message.edit_reply_markup(
+            reply_markup=player_keyboard(
+                chat_id,
+                paused=state.get("paused", False),
+                autoplay=enabled,
+            )
+        )
+        await query.answer(
+            "Auto Mix enabled — similar songs will continue after the queue."
+            if enabled else "Auto Mix disabled"
+        )
+        return
+
+    if action == "mix":
+        if not state or not state.get("current"):
+            await query.answer("Play a track first.", show_alert=True)
+            return
+        seed = dict(state["current"])
+        await query.answer("Finding your MIKASA MIX…")
+        try:
+            tracks = await asyncio.wait_for(
+                asyncio.to_thread(get_related_tracks_sync, seed, 5),
+                timeout=20,
+            )
+        except asyncio.TimeoutError:
+            tracks = []
+        except Exception:
+            runtime.LOGGER.exception("MIKASA MIX lookup failed in %s", chat_id)
+            tracks = []
+
+        latest = await runtime.session_snapshot(chat_id)
+        if not latest or _track_key(latest.get("current")) != _track_key(seed):
+            await query.message.reply_text(
+                "🎵 The current track changed. Open MIKASA MIX again for the new song."
+            )
+            return
+        if not tracks:
+            await query.message.reply_text(
+                "🌸 <b>No MIKASA MIX tracks found right now.</b>\n"
+                "Try refreshing in a moment or play another song.",
+                parse_mode="HTML",
+            )
+            return
+
+        _MIX_CACHE[chat_id] = {"seed": _track_key(seed), "tracks": tracks}
+        if len(_MIX_CACHE) > 100:
+            oldest_chat = next(iter(_MIX_CACHE))
+            if oldest_chat != chat_id:
+                _MIX_CACHE.pop(oldest_chat, None)
+
+        lines = [
+            "✨ <b>MIKASA MIX</b>",
+            f"🎧 Inspired by: <b>{escape(str(seed.get('title') or 'Current track'))}</b>",
+            "",
+        ]
+        for index, track in enumerate(tracks, start=1):
+            artist = track.get("artist") or track.get("uploader") or "Unknown artist"
+            lines.append(
+                f"<b>{index}.</b> {escape(str(track.get('title') or 'Unknown track'))}\n"
+                f"   🎤 {escape(str(artist))} · {duration(track.get('duration'))}"
+            )
+        lines += ["", "Choose a number to add that song to the queue."]
+        await query.message.reply_text(
+            "\n".join(lines),
+            parse_mode="HTML",
+            reply_markup=_mix_keyboard(chat_id, tracks),
+            disable_web_page_preview=True,
+        )
+        return
+
+    if action in {"mixpick", "mixall"}:
+        if not state or not state.get("current") or runtime.get_calls() is None:
+            await query.answer("Music is not active in this group.", show_alert=True)
+            return
+        cached = _MIX_CACHE.get(chat_id)
+        if not cached or cached.get("seed") != _track_key(state.get("current")):
+            await query.answer("This mix has expired. Open MIKASA MIX again.", show_alert=True)
+            return
+        if action == "mixpick":
+            if not extra or not extra.isdigit():
+                await query.answer("Invalid song number.", show_alert=True)
+                return
+            index = int(extra)
+            if not 1 <= index <= len(cached["tracks"]):
+                await query.answer("That song is no longer available.", show_alert=True)
+                return
+            selected = [dict(cached["tracks"][index - 1])]
+        else:
+            selected = [dict(track) for track in cached["tracks"]]
+        await query.answer("Adding to queue…")
+        await _add_tracks(update, selected)
+        return
+
     if action == "queue":
         if not state or not state.get("current"):
             await query.answer("The queue is empty.", show_alert=True)
@@ -496,13 +657,13 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
             if not await runtime.pause_chat(chat_id):
                 await query.answer("Nothing is playing.", show_alert=True)
                 return
-            await query.message.edit_reply_markup(reply_markup=player_keyboard(chat_id, paused=True))
+            await query.message.edit_reply_markup(reply_markup=player_keyboard(chat_id, paused=True, autoplay=state.get("autoplay", False)))
             await query.answer("Paused")
         elif action == "resume":
             if not await runtime.resume_chat(chat_id):
                 await query.answer("No paused track.", show_alert=True)
                 return
-            await query.message.edit_reply_markup(reply_markup=player_keyboard(chat_id, paused=False))
+            await query.message.edit_reply_markup(reply_markup=player_keyboard(chat_id, paused=False, autoplay=state.get("autoplay", False)))
             await query.answer("Resumed")
         elif action == "skip":
             await query.answer("Skipping…")
@@ -679,6 +840,6 @@ def register_handlers() -> None:
     application.add_handler(
         CallbackQueryHandler(
             music_controls,
-            pattern=r"^mv:(pause|resume|skip|replay|end|queue|loop|fav):(-?\d+)$",
+            pattern=r"^mv:(pause|resume|skip|replay|end|queue|loop|fav|mix|mixpick|mixall|mixclose|autoplay):(-?\d+)(?::(\d+))?$",
         )
     )
