@@ -51,8 +51,10 @@ def _youtube_options() -> dict:
         "no_warnings": True,
         "skip_download": True,
         "extract_flat": False,
-        "socket_timeout": 20,
-        "retries": 2,
+        "socket_timeout": 12,
+        "retries": 1,
+        "fragment_retries": 2,
+        "concurrent_fragment_downloads": 3,
         "extractor_args": {
             "youtube": {
                 "player_client": ["android", "web"],
@@ -118,8 +120,10 @@ def _ytmusic_search(query: str) -> dict | None:
             "artist": artist or None,
             "uploader": artist or None,
             "thumbnail": _best_thumbnail(first),
-            "ytmusic_candidates": [item["videoId"] for item in candidates[:5]],
+            "ytmusic_candidates": [item["videoId"] for item in candidates[:4]],
             "search_query": query,
+            "artist": artist or None,
+            "thumbnail": _best_thumbnail(first),
         }
     except Exception as exc:
         LOGGER.info("YouTube Music catalogue search unavailable: %s", exc)
@@ -239,7 +243,7 @@ def _download_ytmusic_audio(
     metadata = None
     selected = None
     video_id = None
-    for candidate_id in candidates[:5]:
+    for candidate_id in candidates[:4]:
         try:
             candidate = ytm.get_song(
                 candidate_id,
@@ -481,6 +485,8 @@ def download_video_sync(
                 "title": info.get("title") or "Video",
                 "duration": video_duration,
                 "uploader": info.get("uploader") or info.get("channel"),
+                "artist": _artist_name(info),
+                "thumbnail": _best_thumbnail(info),
                 "source": info.get("webpage_url") or source,
                 "media_type": "video",
             }
