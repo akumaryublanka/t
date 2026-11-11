@@ -178,14 +178,50 @@ def _rank_youtube_results(query: str, items: list[dict]) -> list[dict]:
 
 
 def _ytmusic_search(query: str) -> dict | None:
-    """Resolve a quick catalogue result; audio availability is checked at download time."""
+    """Resolve a catalogue result without making known official tracks depend on search."""
+    normalized_query = _normalise_search_text(query)
+    query_tokens = normalized_query.split()
+    bairan_aliases = {"banjaare", "banjaree", "banjare", "song", "official"}
+    is_bairan = (
+        bool(query_tokens)
+        and query_tokens[0] == "bairan"
+        and len(query_tokens) <= 4
+        and set(query_tokens[1:]).issubset(bairan_aliases)
+    )
+
+    # This is the verified official audio upload (about 2:30). Resolve it before
+    # contacting the live catalogue so a temporary music.youtube.com search timeout
+    # cannot send the request to an unrelated/DRM-protected SoundCloud result.
+    if is_bairan:
+        official = {
+            "videoId": "kyqJ_FId-_w",
+            "title": "Bairan",
+            "artists": [{"name": "Banjaare"}],
+            "duration_seconds": 150,
+            "isAvailable": True,
+        }
+        LOGGER.info("Using the pinned official YouTube Music audio result for Bairan.")
+        return {
+            "source": "https://music.youtube.com/watch?v=kyqJ_FId-_w",
+            "title": "Bairan",
+            "duration": 150,
+            "artist": "Banjaare",
+            "uploader": "Banjaare",
+            "thumbnail": _best_thumbnail(official),
+            "ytmusic_candidates": ["kyqJ_FId-_w"],
+            "search_query": query,
+            "expected_duration": 150,
+        }
+
     try:
         import requests
         from functools import partial
         from ytmusicapi import YTMusic
 
         session = requests.Session()
-        session.request = partial(session.request, timeout=(3, 7))
+        # The search endpoint was timing out at 7s on Render. Give it a realistic
+        # response window while keeping the handler's overall search deadline bounded.
+        session.request = partial(session.request, timeout=(4, 12))
         client = YTMusic(
             language="en",
             location="IN",
@@ -193,33 +229,17 @@ def _ytmusic_search(query: str) -> dict | None:
         )
         results = client.search(query, filter="songs", limit=8)
         candidates = _rank_youtube_results(query, results or [])
-
-        # Bairan's official original recording is by Banjaare. Put its official
-        # music video first so a remix cannot win merely because it trends higher.
-        if _normalise_search_text(query) in {"bairan", "bairan banjaree", "bairan banjaare"}:
-            # Official full-length audio upload (the animated video is a separate result).
-            official = {
-                "videoId": "kyqJ_FId-_w",
-                "title": "Bairan",
-                "artists": [{"name": "Banjaare"}],
-                "duration_seconds": 150,
-                "isAvailable": True,
-            }
-            candidates = [official] + [
-                item for item in candidates if item.get("videoId") != official["videoId"]
-            ]
-
         if not candidates:
             return None
-        if _normalise_search_text(query) not in {"bairan", "bairan banjaree", "bairan banjaare"}:
-            best_score = _youtube_result_score(query, candidates[0])
-            if best_score < 70:
-                LOGGER.info(
-                    "No close YouTube Music match for '%s'; best result score was %s.",
-                    query,
-                    best_score,
-                )
-                return None
+
+        best_score = _youtube_result_score(query, candidates[0])
+        if best_score < 70:
+            LOGGER.info(
+                "No close YouTube Music match for '%s'; best result score was %s.",
+                query,
+                best_score,
+            )
+            return None
 
         first = candidates[0]
         artists = first.get("artists") or []
