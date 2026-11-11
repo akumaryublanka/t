@@ -40,7 +40,7 @@ def _mix_keyboard(chat_id: int, tracks: list[dict]) -> InlineKeyboardMarkup:
     ]
     rows = [numbers] if numbers else []
     rows.append([
-        InlineKeyboardButton("🗑 CLOSE", callback_data=f"mv:mixclose:{chat_id}", style="success")
+        InlineKeyboardButton("🗑 CLOSE", callback_data=f"mv:mixclose:{chat_id}", style="danger")
     ])
     return InlineKeyboardMarkup(rows)
 
