@@ -355,6 +355,11 @@ async def _download_track(track: dict, chat_id: int) -> dict:
         raise RuntimeError("Audio preparation timed out. Please try the song again.") from exc
     except Exception as source_error:
         title = (track.get("title") or "").strip()
+        if "preview" in str(source_error).casefold():
+            LOGGER.warning("Only a short preview was available for '%s'.", title)
+            raise RuntimeError(
+                "Only a short preview was available; the full song could not be verified, so it was not played."
+            ) from source_error
         if not title or title == track.get("source") or track.get("search_query"):
             LOGGER.warning("Primary music source failed in chat %s: %s", chat_id, source_error)
             raise RuntimeError("This track is temporarily unavailable.") from source_error
