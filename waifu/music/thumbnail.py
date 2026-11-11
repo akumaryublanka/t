@@ -741,3 +741,146 @@ def _load_sakura_template() -> Optional[Image.Image]:
         return base.convert("RGB")
     except Exception:
         return _load_mikasa_portrait((WIDTH, HEIGHT), accent).convert("RGB")
+
+
+# ---------------------------------------------------------------------------
+# Retro neon-grid player artwork matching the supplied Telegram reference.
+# ---------------------------------------------------------------------------
+def create_music_thumbnail(
+    title: str,
+    artist: str = "Unknown Artist",
+    artwork: Optional[ImageSource] = None,
+    *,
+    duration=None,
+    requester: Optional[str] = None,
+    brand: str = DEFAULT_BRAND,
+    accent_color: str = "#E95BCB",
+    position=None,
+    output: Optional[Union[str, Path]] = None,
+) -> BytesIO:
+    """Render the MIKASAVERSE retro arcade music-player card."""
+    title = str(title or "Unknown Track").strip()
+    artist = str(artist or "Unknown Artist").strip()
+    pink = (239, 83, 205)
+    cyan = (77, 196, 255)
+    purple = (139, 85, 230)
+    canvas = Image.new("RGBA", (WIDTH, HEIGHT), (12, 5, 31, 255))
+    draw = ImageDraw.Draw(canvas, "RGBA")
+
+    # Fine neon grid and ambient colour.
+    for x in range(0, WIDTH, 32):
+        draw.line((x, 0, x, HEIGHT), fill=(116, 74, 192, 48), width=1)
+    for y in range(0, HEIGHT, 32):
+        draw.line((0, y, WIDTH, y), fill=(116, 74, 192, 48), width=1)
+    glow = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.ellipse((-200, -250, 590, 390), fill=(*pink, 48))
+    gd.ellipse((760, -180, 1460, 420), fill=(*cyan, 34))
+    canvas.alpha_composite(glow.filter(ImageFilter.GaussianBlur(115)))
+    draw = ImageDraw.Draw(canvas, "RGBA")
+
+    # Thick rounded arcade cabinet frame and side equalizer rails.
+    draw.rounded_rectangle((14, 12, 1266, 708), radius=38,
+                           fill=(9, 4, 24, 246), outline=(238, 226, 255, 255), width=8)
+    draw.rounded_rectangle((29, 27, 1251, 693), radius=29,
+                           outline=(*purple, 220), width=3)
+    for y in range(38, 682, 9):
+        draw.line((36, y, 55, y), fill=(196, 166, 255, 235), width=3)
+        draw.line((1225, y, 1244, y), fill=(196, 166, 255, 235), width=3)
+    for i in range(24):
+        x = 180 + i * 39
+        draw.line((x, 672, x + 18, 672),
+                  fill=(*(pink if i % 2 else cyan), 240), width=5)
+
+    # Large two-tone heading.
+    music_font = _font(91, True)
+    while _width(draw, "MUSIC", music_font) > 640 and music_font.size > 58:
+        music_font = _font(music_font.size - 2, True)
+    draw.text((330, 37), "MUSIC", font=music_font, fill=(*pink, 255),
+              stroke_width=2, stroke_fill=(110, 34, 150, 255))
+    player_font = _font(70, True)
+    draw.text((365, 126), "PLAYER", font=player_font, fill=(*cyan, 255),
+              stroke_width=2, stroke_fill=(30, 92, 178, 255))
+    draw.text((207, 64), "♫", font=_font(44, True), fill=(*pink, 255))
+    draw.text((1025, 65), "♫", font=_font(44, True), fill=(*cyan, 255))
+
+    # Dark player deck.
+    draw.rounded_rectangle((116, 228, 1164, 630), radius=26,
+                           fill=(8, 5, 24, 250), outline=(*pink, 245), width=5)
+    draw.rounded_rectangle((130, 242, 1150, 616), radius=20,
+                           outline=(*purple, 145), width=2)
+
+    # Song artwork with a double neon frame.
+    cover = _load_artwork(artwork)
+    if cover is None:
+        cover = _load_mikasa_portrait((244, 244), pink)
+    cover = _cover(cover, (244, 244)).convert("RGBA")
+    mask = Image.new("L", (244, 244), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, 243, 243), radius=14, fill=255)
+    canvas.paste(cover, (164, 318), mask)
+    draw = ImageDraw.Draw(canvas, "RGBA")
+    draw.rounded_rectangle((155, 309, 417, 571), radius=20,
+                           outline=(*cyan, 255), width=5)
+    draw.rounded_rectangle((164, 318, 409, 563), radius=15,
+                           outline=(*pink, 190), width=2)
+
+    # Current song title, artist and heart marker.
+    info_x, info_w = 455, 650
+    title_font = _fit_font(draw, title, info_w, 28, 17)
+    title_lines = _wrap(draw, title, title_font, info_w, max_lines=2)
+    y = 319
+    for line in title_lines:
+        draw.text((info_x, y), line, font=title_font, fill=(250, 246, 255, 255))
+        y += title_font.size + 8
+    artist_font = _fit_font(draw, artist, info_w - 40, 21, 14)
+    draw.text((info_x, max(y + 2, 378)), artist, font=artist_font,
+              fill=(174, 163, 205, 255))
+    draw.text((1070, 314), "♥", font=_font(34, True), fill=(*pink, 255))
+
+    # Equalizer bars.
+    heights = [8, 14, 22, 15, 30, 46, 28, 13, 20, 36, 54, 33, 17, 24, 42, 29, 16, 8]
+    for i, height in enumerate(heights):
+        color = pink if i % 2 == 0 else cyan
+        x = 466 + i * 31
+        draw.rounded_rectangle((x, 470 - height, x + 9, 470),
+                               radius=4, fill=(*color, 245))
+
+    # Track rail and total duration (elapsed time is not fabricated).
+    rail_x, rail_y, rail_w = 466, 489, 626
+    draw.rounded_rectangle((rail_x, rail_y, rail_x + rail_w, rail_y + 9),
+                           radius=5, fill=(91, 82, 119, 240))
+    draw.rounded_rectangle((rail_x, rail_y, rail_x + 112, rail_y + 9),
+                           radius=5, fill=(*pink, 255))
+    draw.ellipse((rail_x + 102, rail_y - 5, rail_x + 122, rail_y + 15),
+                 fill=(255, 255, 255, 255))
+    draw.text((466, 507), "NOW PLAYING", font=_font(13, True),
+              fill=(*pink, 255))
+    draw.text((1010, 507), _time_label(duration), font=_font(16, True),
+              fill=(238, 230, 250, 255))
+
+    # Tiny transport symbols as part of the graphic.
+    cy = 563
+    draw.text((490, cy - 15), "⇄", font=_font(30, True), fill=(*cyan, 255))
+    draw.text((590, cy - 15), "◀", font=_font(29, True), fill=(*pink, 255))
+    draw.ellipse((690, cy - 24, 754, cy + 40), outline=(*pink, 255), width=4)
+    draw.text((707, cy - 13), "Ⅱ", font=_font(30, True), fill=(255, 255, 255, 255))
+    draw.text((800, cy - 15), "▶", font=_font(29, True), fill=(*cyan, 255))
+    draw.text((895, cy - 15), "↻", font=_font(30, True), fill=(*pink, 255))
+
+    draw.text((164, 646), str(brand or DEFAULT_BRAND).upper(),
+              font=_font(16, True), fill=(221, 207, 242, 255))
+    draw.text((164, 668), "LISTEN  ·  ENJOY  ·  VIBE",
+              font=_font(10, True), fill=(155, 137, 187, 255))
+
+    result = BytesIO()
+    canvas.convert("RGB").save(result, format="PNG", optimize=True)
+    result.seek(0)
+    if output is not None:
+        target = Path(output)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(result.getvalue())
+        result.seek(0)
+    return result
+
+
+generate_thumbnail = create_music_thumbnail
