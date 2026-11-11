@@ -49,8 +49,9 @@ def player_keyboard(
 async def reply(update: Update, text: str, reply_markup=None) -> None:
     message = update.effective_message
     if message:
-        await message.reply_text(
-            text,
+        await message.get_bot().send_message(
+            chat_id=message.chat_id,
+            text=text,
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=True,
             reply_markup=reply_markup,
