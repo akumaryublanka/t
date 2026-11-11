@@ -88,7 +88,8 @@ async def _reply_now_playing(update: Update, track: dict, queued: int = 0, pause
             duration=track.get("duration"),
             requester=track.get("requested_by"),
         )
-        await message.reply_photo(
+        await message.get_bot().send_photo(
+            chat_id=message.chat_id,
             photo=thumbnail,
             caption=caption,
             parse_mode="HTML",
