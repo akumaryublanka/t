@@ -460,7 +460,7 @@ async def advance_queue(
     expected_generation: int | None = None,
     natural_end: bool = False,
 ) -> bool:
-    """Reserve the next transition briefly; never hold the chat lock during downloads."""
+    """Advance without holding the chat lock during downloads or radio lookups."""
     async with _chat_locks[chat_id]:
         state = _sessions.get(chat_id)
         if not state or not state.get("current") or state.get("transitioning"):
@@ -490,24 +490,95 @@ async def advance_queue(
             next_track = state["queue"].pop(0) if state.get("queue") else None
         state_ref = state
 
-    while next_track is not None:
-        try:
-            await _start_track(chat_id, next_track)
-            if announce:
-                await _send_now_playing(chat_id, next_track)
-            return True
-        except Exception:
-            LOGGER.exception("Could not start the next track in %s", chat_id)
+    autoplay_attempted = False
+    while True:
+        while next_track is not None:
+            try:
+                await _start_track(chat_id, next_track)
+                if announce:
+                    await _send_now_playing(chat_id, next_track)
+                return True
+            except Exception:
+                LOGGER.exception("Could not start the next track in %s", chat_id)
+                async with _chat_locks[chat_id]:
+                    live_state = _sessions.get(chat_id)
+                    if live_state is not state_ref:
+                        return False
+                    next_track = (
+                        live_state["queue"].pop(0)
+                        if live_state.get("queue")
+                        else None
+                    )
+
+        # Prefer a manually queued track if one arrived while the last
+        # download was finishing. Otherwise refill from YouTube Music radio.
+        async with _chat_locks[chat_id]:
+            live_state = _sessions.get(chat_id)
+            if live_state is not state_ref:
+                return False
+            if live_state.get("queue"):
+                next_track = live_state["queue"].pop(0)
+                should_autoplay = False
+                seed_track = {}
+                seen_ids = []
+            else:
+                next_track = None
+                should_autoplay = (
+                    bool(live_state.get("autoplay")) and not autoplay_attempted
+                )
+                seed_track = dict(live_state.get("current") or {})
+                seen_ids = list(live_state.get("autoplay_seen") or [])
+
+        if next_track is not None:
+            continue
+
+        if should_autoplay:
+            autoplay_attempted = True
+            try:
+                auto_tracks = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        get_related_tracks_sync,
+                        seed_track,
+                        5,
+                        seen_ids,
+                    ),
+                    timeout=20,
+                )
+            except asyncio.TimeoutError:
+                LOGGER.warning("Auto Mix lookup timed out in chat %s.", chat_id)
+                auto_tracks = []
+            except Exception:
+                LOGGER.exception("Auto Mix lookup failed in chat %s.", chat_id)
+                auto_tracks = []
+
             async with _chat_locks[chat_id]:
                 live_state = _sessions.get(chat_id)
                 if live_state is not state_ref:
                     return False
-                # _start_track deliberately leaves the transition reserved on failure.
+                # Respect a user switching Auto Mix off while lookup was running.
+                if live_state.get("autoplay") and auto_tracks:
+                    live_state["queue"].extend(auto_tracks)
+                    live_state["autoplay_seen"] = list(dict.fromkeys(
+                        seen_ids + [
+                            str(track.get("video_id"))
+                            for track in auto_tracks
+                            if track.get("video_id")
+                        ]
+                    ))[-60:]
+                    LOGGER.info(
+                        "Auto Mix queued %s related tracks in chat %s.",
+                        len(auto_tracks),
+                        chat_id,
+                    )
                 next_track = (
                     live_state["queue"].pop(0)
                     if live_state.get("queue")
                     else None
                 )
+            if next_track is not None:
+                continue
+
+        break
 
     async with _chat_locks[chat_id]:
         if _sessions.get(chat_id) is state_ref:
@@ -520,7 +591,6 @@ async def advance_queue(
             "🏁 <b>Queue finished.</b> MikasaVerse left the voice chat.",
         )
     return True
-
 
 async def skip_current(chat_id: int) -> bool:
     # Capture before waiting for the lock so a simultaneous natural-end event
