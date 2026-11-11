@@ -283,27 +283,45 @@ def _media_stream(path: str, kind: str) -> MediaStream:
     return _video_stream(path) if kind == "video" else _audio_stream(path)
 
 
+async def _run_blocking_download(func, *, timeout: float, **kwargs) -> dict:
+    """Run a downloader with a deadline and clean up its result if it finishes late."""
+    task = asyncio.create_task(asyncio.to_thread(func, **kwargs))
+
+    def cleanup_late_result(done: asyncio.Task) -> None:
+        try:
+            result = done.result()
+        except BaseException:
+            return
+        if isinstance(result, dict) and result.get("temp_dir"):
+            asyncio.create_task(_cleanup_temp_dir(result["temp_dir"]))
+
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        task.add_done_callback(cleanup_late_result)
+        raise
+
+
 async def _download_track(track: dict, chat_id: int) -> dict:
     """Download media with bounded waits so requests cannot hang a group forever."""
     kind = track.get("media_type", "audio")
     if kind == "video":
         try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(download_video_sync, track["source"]),
+            return await _run_blocking_download(
+                download_video_sync,
                 timeout=75,
+                source=track["source"],
             )
         except asyncio.TimeoutError as exc:
             raise RuntimeError("Video preparation timed out. Try a shorter video or another link.") from exc
 
     try:
-        return await asyncio.wait_for(
-            asyncio.to_thread(
-                download_track_sync,
-                track["source"],
-                ytmusic_candidates=track.get("ytmusic_candidates"),
-                fallback_query=track.get("search_query"),
-            ),
+        return await _run_blocking_download(
+            download_track_sync,
             timeout=55,
+            source=track["source"],
+            ytmusic_candidates=track.get("ytmusic_candidates"),
+            fallback_query=track.get("search_query"),
         )
     except asyncio.TimeoutError as exc:
         raise RuntimeError("Audio preparation timed out. Please try the song again.") from exc
@@ -314,9 +332,10 @@ async def _download_track(track: dict, chat_id: int) -> dict:
             raise RuntimeError("This track is temporarily unavailable.") from source_error
         LOGGER.info("Primary source unavailable for '%s'; trying title search.", title)
         try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(download_track_sync, title),
+            return await _run_blocking_download(
+                download_track_sync,
                 timeout=45,
+                source=title,
             )
         except Exception as fallback_error:
             LOGGER.warning("No alternate audio source for '%s': %s", title, fallback_error)
