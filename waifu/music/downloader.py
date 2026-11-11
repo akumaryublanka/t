@@ -46,9 +46,62 @@ def _artist_name(info: dict | None) -> str | None:
     return str(artist).strip() if artist else None
 
 
+# Cookie material is read only from Render's environment and never logged.
+_YOUTUBE_COOKIE_FILE: str | None = None
+
+
+def _youtube_cookie_file() -> str | None:
+    """Return a private yt-dlp cookie file configured through environment vars.
+
+    YOUTUBE_COOKIES_FILE may point to a mounted Netscape cookie file.
+    Alternatively, YOUTUBE_COOKIES may contain Netscape-format cookie text
+    or a path to such a file. Cookie contents are never written to the repo
+    or included in logs.
+    """
+    import os
+    import tempfile
+
+    global _YOUTUBE_COOKIE_FILE
+    configured_file = os.environ.get("YOUTUBE_COOKIES_FILE", "").strip()
+    configured_value = os.environ.get("YOUTUBE_COOKIES", "").strip()
+    candidate = configured_file or configured_value
+    if not candidate:
+        return None
+
+    # A path is preferable for large/mounted cookie files.
+    if os.path.isfile(candidate):
+        return candidate
+
+    # Otherwise treat YOUTUBE_COOKIES as the actual Netscape cookie contents.
+    if configured_file or not configured_value or "\\n" not in configured_value and not configured_value.startswith("# Netscape"):
+        return None
+    if _YOUTUBE_COOKIE_FILE and os.path.isfile(_YOUTUBE_COOKIE_FILE):
+        return _YOUTUBE_COOKIE_FILE
+
+    fd, path = tempfile.mkstemp(prefix="mikasa-youtube-", suffix=".cookies.txt")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as cookie_file:
+            cookie_file.write(configured_value)
+            if not configured_value.endswith("\\n"):
+                cookie_file.write("\\n")
+        _YOUTUBE_COOKIE_FILE = path
+        return path
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
+
+
 def _youtube_options() -> dict:
-    """Prefer YouTube clients that can work without a logged-in session."""
-    return {
+    """Build yt-dlp options, optionally using a private Render cookie secret."""
+    options = {
         "format": "bestaudio/best",
         "noplaylist": True,
         "quiet": True,
@@ -65,6 +118,10 @@ def _youtube_options() -> dict:
             }
         },
     }
+    cookie_file = _youtube_cookie_file()
+    if cookie_file:
+        options["cookiefile"] = cookie_file
+    return options
 
 
 def _extract(search: str) -> dict | None:
