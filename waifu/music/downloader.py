@@ -956,13 +956,8 @@ def download_track_sync(
             shutil.rmtree(ytm_temp_dir, ignore_errors=True)
             LOGGER.warning("YouTube Music API playback path unavailable: %s", exc)
 
-        # Do not silently replace the known official Bairan upload with a
-        # random SoundCloud preview if YouTube Music did not expose full audio.
-        if _youtube_video_id(source) == "kyqJ_FId-_w":
-            reason = str(ytmusic_error) if ytmusic_error else "No playable full-length audio formats were returned."
-            raise RuntimeError(
-                "Official Bairan audio could not be extracted from YouTube Music. " + reason[:220]
-            ) from ytmusic_error
+        # When YouTube is bot-gated, try a closely ranked SoundCloud version.
+        # The fallback below verifies full-track duration before accepting audio.
 
         if ytmusic_error and "preview" in str(ytmusic_error).casefold():
             raise RuntimeError(
