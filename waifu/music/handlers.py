@@ -84,7 +84,7 @@ async def _add_tracks(update: Update, tracks: list[dict]) -> None:
             try:
                 await runtime._start_track(chat_id, first)
             except Exception:
-                runtime._sessions.pop(chat_id, None)
+                await runtime._stop_chat_locked(chat_id)
                 raise
             state["queue"].extend(remaining)
             await reply(
@@ -239,10 +239,6 @@ async def replay(update: Update, context: CallbackContext) -> None:
 async def loop(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
-    state = runtime._sessions.get(update.effective_chat.id)
-    if not state or not state.get("current"):
-        await reply(update, "ℹ️ Start a track before setting loop.")
-        return
     if len(context.args) != 1 or not context.args[0].isdigit():
         await reply(update, "Usage: <code>/loop 0-10</code> · 0 disables repeat; 1-10 repeats the current track.")
         return
@@ -250,69 +246,57 @@ async def loop(update: Update, context: CallbackContext) -> None:
     if not 0 <= count <= 10:
         await reply(update, "❌ Loop range is 0-10.")
         return
-    state["loop_remaining"] = count
+    if not await runtime.set_loop_remaining(update.effective_chat.id, count):
+        await reply(update, "ℹ️ Start a track before setting loop.")
+        return
     await reply(update, f"🔁 Current track will repeat <b>{count}</b> more time(s)." if count else "↩️ Track loop disabled.")
 
 
 async def shuffle(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
-    state = runtime._sessions.get(update.effective_chat.id)
-    if not state or not state.get("queue"):
+    count = await runtime.shuffle_queue(update.effective_chat.id)
+    if not count:
         await reply(update, "ℹ️ There are no upcoming tracks to shuffle.")
         return
-    random.shuffle(state["queue"])
-    await reply(update, f"🔀 Shuffled <b>{len(state['queue'])}</b> upcoming track(s).")
+    await reply(update, f"🔀 Shuffled <b>{count}</b> upcoming track(s).")
 
 
 async def clear_queue(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
-    state = runtime._sessions.get(update.effective_chat.id)
-    if not state or not state.get("queue"):
+    removed = await runtime.clear_queue(update.effective_chat.id)
+    if not removed:
         await reply(update, "ℹ️ The upcoming queue is already empty.")
         return
-    removed = len(state["queue"])
-    state["queue"].clear()
     await reply(update, f"🧹 Cleared <b>{removed}</b> upcoming track(s). Current track will continue.")
 
 
 async def remove_track(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
-    state = runtime._sessions.get(update.effective_chat.id)
-    if not state or not state.get("queue"):
-        await reply(update, "ℹ️ There are no upcoming tracks to remove.")
-        return
     if len(context.args) != 1 or not context.args[0].isdigit():
         await reply(update, "Usage: <code>/remove 2</code> · Use /queue to see track positions.")
         return
     position = int(context.args[0])
-    if not 1 <= position <= len(state["queue"]):
-        await reply(update, f"❌ Choose a queue position between 1 and {len(state['queue'])}.")
+    track = await runtime.remove_queued_track(update.effective_chat.id, position)
+    if not track:
+        await reply(update, "❌ That queue position is not available.")
         return
-    track = state["queue"].pop(position - 1)
     await reply(update, f"🗑️ Removed from queue: <b>{escape(track['title'])}</b>")
 
 
 async def move_track(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
-    state = runtime._sessions.get(update.effective_chat.id)
-    tracks = state.get("queue", []) if state else []
-    if len(tracks) < 2:
-        await reply(update, "ℹ️ Add at least two upcoming tracks before moving a song.")
-        return
     if len(context.args) != 2 or not all(value.isdigit() for value in context.args):
         await reply(update, "Usage: <code>/move 3 1</code> · Moves queue item 3 to position 1.")
         return
     source, destination = map(int, context.args)
-    if not 1 <= source <= len(tracks) or not 1 <= destination <= len(tracks):
-        await reply(update, f"❌ Positions must be between 1 and {len(tracks)}.")
+    if not await runtime.move_queued_track(update.effective_chat.id, source, destination):
+        await reply(update, "ℹ️ Queue positions are no longer valid. Check /queue and try again.")
         return
-    track = tracks.pop(source - 1)
-    tracks.insert(destination - 1, track)
-    await reply(update, f"↕️ Moved <b>{escape(track['title'])}</b> to queue position <b>{destination}</b>.")
+    await reply(update, f"↕️ Moved queue item <b>{source}</b> to position <b>{destination}</b>.")
 
 
 async def volume(update: Update, context: CallbackContext) -> None:
@@ -327,12 +311,12 @@ async def volume(update: Update, context: CallbackContext) -> None:
         return
     chat_id = update.effective_chat.id
     try:
-        await runtime.get_calls().change_volume_call(chat_id, level)
         if await runtime.change_volume(chat_id, level):
             await reply(update, f"🔊 Volume set to <b>{level}%</b>.")
         else:
             await reply(update, "❌ Couldn't change volume. Start a track first.")
     except Exception:
+        runtime.LOGGER.exception("Volume change failed in %s", chat_id)
         await reply(update, "❌ Couldn't change volume. Start a track first.")
 
 
@@ -350,7 +334,7 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
         await query.answer("This control belongs to another group.", show_alert=True)
         return
 
-    state = runtime._sessions.get(chat_id)
+    state = await runtime.session_snapshot(chat_id)
     if action == "queue":
         if not state or not state.get("current"):
             await query.answer("The queue is empty.", show_alert=True)
@@ -396,8 +380,11 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
             await runtime.replay_current(chat_id)
             await query.answer("Replaying current track")
         elif action == "loop":
-            state["loop_remaining"] = 0 if state.get("loop_remaining", 0) else 1
-            await query.answer("Loop disabled" if state["loop_remaining"] == 0 else "One repeat enabled")
+            loop_count = await runtime.toggle_loop(chat_id)
+            if loop_count is None:
+                await query.answer("Nothing is playing.", show_alert=True)
+            else:
+                await query.answer("Loop disabled" if loop_count == 0 else "One repeat enabled")
         elif action == "end":
             await runtime.stop_chat(chat_id)
             await query.answer("Music stopped")
@@ -448,7 +435,7 @@ async def favorite(update: Update, context: CallbackContext) -> None:
     if not await _require_music(update):
         return
     user = update.effective_user
-    state = runtime._sessions.get(update.effective_chat.id)
+    state = await runtime.session_snapshot(update.effective_chat.id)
     track = state.get("current") if state else None
     if not user or not track:
         await reply(update, "ℹ️ There is no current track to save.")
@@ -561,6 +548,5 @@ def register_handlers() -> None:
         CallbackQueryHandler(
             music_controls,
             pattern=r"^mv:(pause|resume|skip|replay|end|queue|loop|fav):(-?\d+)$",
-            block=False,
         )
     )
