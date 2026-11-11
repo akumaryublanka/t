@@ -1,7 +1,8 @@
-"""Voice-chat assistant lifecycle, stream state, and queue management."""
+"""Reliable voice-chat playback lifecycle for MikasaVerse."""
 
 import asyncio
 import logging
+import os
 import shutil
 from collections import defaultdict
 from html import escape
@@ -25,6 +26,35 @@ _chat_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 _resolved_chat_peers: set[int] = set()
 _startup_status = "not_started"
 
+# PyTgCalls identifies a stream-end update by chat, not by our track ID.
+# A short guard prevents a delayed end event from the replaced stream from
+# skipping the track that has just started.
+STREAM_END_GUARD_SECONDS = 1.35
+
+
+def _new_state() -> dict:
+    return {
+        "current": None,
+        "queue": [],
+        "volume": 100,
+        "loop_remaining": 0,
+        "paused": False,
+        "active_temp_dir": None,
+        "active_path": None,
+        "generation": 0,
+        "started_at": 0.0,
+        "transitioning": False,
+        "recovering": False,
+    }
+
+
+def _get_state(chat_id: int) -> dict:
+    state = _sessions.setdefault(chat_id, _new_state())
+    # Migrate old in-memory states created before the lifecycle update.
+    for key, value in _new_state().items():
+        state.setdefault(key, value)
+    return state
+
 
 def get_calls() -> PyTgCalls | None:
     return _calls
@@ -34,22 +64,53 @@ def get_music_client() -> PyrogramClient | None:
     return _music_client
 
 
+def get_session(chat_id: int) -> dict | None:
+    """Return the live session for internal handlers; callers must use its lock."""
+    return _sessions.get(chat_id)
+
+
+async def session_snapshot(chat_id: int) -> dict | None:
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        if not state:
+            return None
+        return {
+            **state,
+            "current": dict(state["current"]) if state.get("current") else None,
+            "queue": [dict(track) for track in state.get("queue", [])],
+        }
+
+
 async def _cleanup_temp_dir(path: str | None) -> None:
     if path:
         await asyncio.to_thread(shutil.rmtree, path, ignore_errors=True)
 
 
-async def stop_chat(chat_id: int) -> None:
-    """Stop one group's stream and release its downloaded audio."""
-    state = _sessions.pop(chat_id, None)
-    temp_dir = state.get("active_temp_dir") if state else None
+async def _leave_call(chat_id: int) -> None:
     try:
         if _calls is not None:
             await _calls.leave_call(chat_id)
     except Exception:
         LOGGER.debug("Voice chat was already left in %s.", chat_id, exc_info=True)
-    finally:
-        await _cleanup_temp_dir(temp_dir)
+
+
+async def _stop_chat_locked(chat_id: int, *, leave_call: bool = True) -> None:
+    """Stop and clear a chat. Caller must already hold _chat_locks[chat_id]."""
+    state = _sessions.pop(chat_id, None)
+    if state:
+        state["generation"] = int(state.get("generation", 0)) + 1
+        state["transitioning"] = False
+        state["recovering"] = False
+    if leave_call:
+        await _leave_call(chat_id)
+    if state:
+        await _cleanup_temp_dir(state.get("active_temp_dir"))
+
+
+async def stop_chat(chat_id: int) -> None:
+    """Stop one group's stream and release its downloaded audio."""
+    async with _chat_locks[chat_id]:
+        await _stop_chat_locked(chat_id)
 
 
 def unavailable_message() -> str:
@@ -98,12 +159,7 @@ async def _find_chat_in_dialogs(chat_id: int) -> bool:
 
 
 async def _ensure_chat_peer(chat_id: int) -> None:
-    """Join the current group using a temporary invite created by the main bot.
-
-    The main bot must be an admin with Invite Users permission. A one-use link
-    is created only when the assistant is not already a participant and is
-    revoked immediately after the join attempt.
-    """
+    """Join the group using a temporary invite created by the main bot."""
     if _music_client is None:
         raise RuntimeError("The music assistant Telegram session is not running.")
     if chat_id in _resolved_chat_peers:
@@ -119,7 +175,6 @@ async def _ensure_chat_peer(chat_id: int) -> None:
             name="MikasaVerse music assistant",
         )
         invite_link = invite.invite_link
-
         joined_chat = await _music_client.join_chat(invite_link)
         joined_chat_id = getattr(joined_chat, "id", None)
         if joined_chat_id is not None and joined_chat_id != chat_id:
@@ -133,18 +188,16 @@ async def _ensure_chat_peer(chat_id: int) -> None:
             _resolved_chat_peers.add(chat_id)
             LOGGER.info("Music assistant automatically joined group %s.", chat_id)
             return
-
         raise RuntimeError("Telegram did not confirm that the assistant joined this group.")
     except Exception as exc:
         try:
             if await _find_chat_in_dialogs(chat_id):
                 return
         except Exception:
-            LOGGER.debug("Could not refresh music assistant dialogs after auto-join failure.", exc_info=True)
+            LOGGER.debug("Could not refresh assistant dialogs after auto-join failure.", exc_info=True)
         raise RuntimeError(
             "Automatic group join failed. Make sure the main MikasaVerse bot is an admin "
-            "with Invite Users permission in this group, and that the group does not require "
-            "manual approval for new members."
+            "with Invite Users permission, and that the group allows the assistant to join."
         ) from exc
     finally:
         if invite_link:
@@ -154,100 +207,129 @@ async def _ensure_chat_peer(chat_id: int) -> None:
                     invite_link=invite_link,
                 )
             except Exception:
-                LOGGER.warning("Could not revoke the temporary music assistant invite link in %s.", chat_id)
+                LOGGER.warning("Could not revoke the temporary invite link in %s.", chat_id)
 
 
-async def _start_track(chat_id: int, track: dict) -> None:
-    """Download locally and pass the file to PyTgCalls/FFmpeg."""
-    if _calls is None:
-        raise RuntimeError("Music assistant is not connected.")
-    await _ensure_chat_peer(chat_id)
+def _audio_stream(path: str) -> MediaStream:
+    return MediaStream(
+        path,
+        AudioQuality.HIGH,
+        audio_flags=MediaStream.Flags.REQUIRED,
+        video_flags=MediaStream.Flags.IGNORE,
+        # -re paces local files in real time; no video is sent to the call.
+        ffmpeg_parameters="-re",
+    )
+
+
+async def _download_track(track: dict, chat_id: int) -> dict:
     try:
-        downloaded = await asyncio.to_thread(download_track_sync, track["source"])
+        return await asyncio.to_thread(download_track_sync, track["source"])
     except Exception as source_error:
         title = (track.get("title") or "").strip()
         if not title or title == track.get("source"):
-            LOGGER.warning(
-                "Primary music source failed in chat %s: %s",
-                chat_id,
-                source_error,
-            )
+            LOGGER.warning("Primary source failed in chat %s: %s", chat_id, source_error)
             raise RuntimeError("This track is temporarily unavailable.") from source_error
-        LOGGER.info(
-            "Primary source unavailable for '%s'; trying an alternate audio source.",
-            title,
-        )
+        LOGGER.info("Primary source unavailable for '%s'; trying title search.", title)
         try:
-            downloaded = await asyncio.to_thread(download_track_sync, title)
+            return await asyncio.to_thread(download_track_sync, title)
         except Exception as fallback_error:
-            LOGGER.warning(
-                "No alternate audio source was found for '%s': %s",
-                title,
-                fallback_error,
-            )
+            LOGGER.warning("No alternate audio source for '%s': %s", title, fallback_error)
             raise RuntimeError("This track is temporarily unavailable.") from fallback_error
 
-    # Remember a working alternate URL so replay/favourites can reuse it.
-    if downloaded.get("source"):
-        track["source"] = downloaded["source"]
-    new_temp_dir = downloaded["temp_dir"]
+
+async def _start_track(chat_id: int, track: dict) -> None:
+    """Start one track. All callers must hold the chat lock."""
+    if _calls is None:
+        raise RuntimeError("Music assistant is not connected.")
+
+    state = _get_state(chat_id)
+    state["transitioning"] = True
+    downloaded = None
     try:
-        # A bare file path is read as quickly as FFmpeg can produce frames.
-        # -re makes FFmpeg pace local-file input in real time. Explicitly use
-        # 48 kHz stereo PCM parameters for Telegram voice-chat audio.
-        audio_stream = MediaStream(
-            downloaded["path"],
-            AudioQuality.HIGH,
-            audio_flags=MediaStream.Flags.REQUIRED,
-            video_flags=MediaStream.Flags.IGNORE,
-            ffmpeg_parameters="-re",
-        )
+        await _ensure_chat_peer(chat_id)
+        downloaded = await _download_track(track, chat_id)
+        path = downloaded.get("path")
+        temp_dir = downloaded.get("temp_dir")
+        if not path or not temp_dir or not os.path.isfile(path) or os.path.getsize(path) <= 0:
+            raise RuntimeError("The audio downloader returned an empty or missing file.")
+
+        if downloaded.get("source"):
+            track["source"] = downloaded["source"]
+        if downloaded.get("title"):
+            track["title"] = downloaded["title"]
+        if downloaded.get("duration") is not None:
+            track["duration"] = downloaded["duration"]
+
         await _calls.play(
             chat_id,
-            audio_stream,
+            _audio_stream(path),
             GroupCallConfig(auto_start=False),
         )
-    except Exception:
-        await _cleanup_temp_dir(new_temp_dir)
+
+        old_temp_dir = state.get("active_temp_dir")
+        state["current"] = track
+        state["active_temp_dir"] = temp_dir
+        state["active_path"] = path
+        state["paused"] = False
+        state["generation"] = int(state.get("generation", 0)) + 1
+        state["started_at"] = asyncio.get_running_loop().time()
+        state["transitioning"] = False
+        state["recovering"] = False
+
+        if old_temp_dir and old_temp_dir != temp_dir:
+            await _cleanup_temp_dir(old_temp_dir)
+
+        LOGGER.info(
+            "Voice-chat audio started in chat %s: %s (generation %s)",
+            chat_id,
+            track.get("title", "Unknown track"),
+            state["generation"],
+        )
+    except BaseException:
+        state["transitioning"] = False
+        if downloaded:
+            await _cleanup_temp_dir(downloaded.get("temp_dir"))
         raise
 
-    state = _sessions.setdefault(
-        chat_id,
-        {"current": None, "queue": [], "volume": 100,
-         "loop_remaining": 0, "paused": False, "active_temp_dir": None},
-    )
-    previous_temp_dir = state.get("active_temp_dir")
-    state.setdefault("loop_remaining", 0)
-    state.setdefault("paused", False)
-    state["current"] = track
-    state["paused"] = False
-    state["active_temp_dir"] = new_temp_dir
-    if previous_temp_dir and previous_temp_dir != new_temp_dir:
-        await _cleanup_temp_dir(previous_temp_dir)
-    LOGGER.info("Local audio stream started in chat %s: %s",
-                chat_id, track.get("title", "Unknown track"))
 
 async def replay_current(chat_id: int) -> bool:
-    """Restart the current track without changing the upcoming queue."""
     async with _chat_locks[chat_id]:
         state = _sessions.get(chat_id)
-        if not state or not state.get("current"):
+        if not state or not state.get("current") or state.get("transitioning"):
             return False
-        await _start_track(chat_id, state["current"])
+        track = dict(state["current"])
+        await _start_track(chat_id, track)
         return True
 
 
-async def _advance_queue(
+async def advance_queue(
     chat_id: int,
     *,
     announce: bool = True,
     force_skip: bool = False,
-) -> None:
+    expected_generation: int | None = None,
+    natural_end: bool = False,
+) -> bool:
+    """Advance once; generation checks coalesce simultaneous skip/end events."""
     async with _chat_locks[chat_id]:
         state = _sessions.get(chat_id)
-        if not state:
-            return
+        if not state or not state.get("current") or state.get("transitioning"):
+            return False
 
+        generation = int(state.get("generation", 0))
+        if expected_generation is not None and generation != expected_generation:
+            LOGGER.debug(
+                "Ignoring stale queue transition in %s (expected %s, current %s)",
+                chat_id, expected_generation, generation,
+            )
+            return False
+
+        now = asyncio.get_running_loop().time()
+        if natural_end and now - float(state.get("started_at", 0.0)) < STREAM_END_GUARD_SECONDS:
+            LOGGER.debug("Ignoring a likely stale stream-end event in chat %s.", chat_id)
+            return False
+
+        state["transitioning"] = True
         if force_skip:
             state["loop_remaining"] = 0
         else:
@@ -256,7 +338,7 @@ async def _advance_queue(
             if current and remaining > 0:
                 state["loop_remaining"] = remaining - 1
                 try:
-                    await _start_track(chat_id, current)
+                    await _start_track(chat_id, dict(current))
                     if announce:
                         await _send_chat_message(
                             chat_id,
@@ -265,11 +347,11 @@ async def _advance_queue(
                             f"⏱️ {duration(current.get('duration'))}",
                             reply_markup=player_keyboard(chat_id),
                         )
-                    return
+                    return True
                 except Exception:
                     LOGGER.exception("Could not repeat the current track in %s", chat_id)
 
-        while state["queue"]:
+        while state.get("queue"):
             next_track = state["queue"].pop(0)
             try:
                 await _start_track(chat_id, next_track)
@@ -281,29 +363,186 @@ async def _advance_queue(
                         f"⏱️ {duration(next_track.get('duration'))}",
                         reply_markup=player_keyboard(chat_id),
                     )
-                return
+                return True
             except Exception:
                 LOGGER.exception("Could not start the next queued track in %s", chat_id)
-                continue
 
-        finished_state = _sessions.pop(chat_id, None)
-        finished_temp_dir = finished_state.get("active_temp_dir") if finished_state else None
-        try:
-            if _calls is not None:
-                await _calls.leave_call(chat_id)
-        except Exception:
-            LOGGER.debug("Voice chat was already left in %s.", chat_id, exc_info=True)
-        finally:
-            await _cleanup_temp_dir(finished_temp_dir)
+        await _stop_chat_locked(chat_id)
         if announce:
             await _send_chat_message(
                 chat_id,
                 "🏁 <b>Queue finished.</b> MikasaVerse left the voice chat.",
             )
+        return True
+
+
+async def skip_current(chat_id: int) -> bool:
+    # Capture before waiting for the lock so a simultaneous natural-end event
+    # cannot make this command skip the newly-started next song as well.
+    state = _sessions.get(chat_id)
+    if not state or not state.get("current"):
+        return False
+    generation = int(state.get("generation", 0))
+    return await advance_queue(
+        chat_id,
+        announce=True,
+        force_skip=True,
+        expected_generation=generation,
+    )
+
+
+async def pause_chat(chat_id: int) -> bool:
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        if not state or not state.get("current") or state.get("transitioning") or _calls is None:
+            return False
+        await _calls.pause(chat_id)
+        state["paused"] = True
+        return True
+
+
+async def resume_chat(chat_id: int) -> bool:
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        if not state or not state.get("current") or state.get("transitioning") or _calls is None:
+            return False
+        await _calls.resume(chat_id)
+        state["paused"] = False
+        return True
+
+
+async def change_volume(chat_id: int, level: int) -> bool:
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        if not state or not state.get("current") or _calls is None:
+            return False
+        await _calls.change_volume_call(chat_id, level)
+        state["volume"] = level
+        return True
 
 
 async def _on_stream_end(_: PyTgCalls, update: StreamEnded) -> None:
-    await _advance_queue(update.chat_id, announce=True)
+    state = _sessions.get(update.chat_id)
+    if not state or not state.get("current"):
+        return
+    generation = int(state.get("generation", 0))
+    await advance_queue(
+        update.chat_id,
+        announce=True,
+        expected_generation=generation,
+        natural_end=True,
+    )
+
+
+async def _discard_session_after_call_end(chat_id: int) -> None:
+    async with _chat_locks[chat_id]:
+        await _stop_chat_locked(chat_id, leave_call=False)
+
+
+async def _recover_disconnected_chat(chat_id: int, generation: int, rejoin_group: bool) -> None:
+    """Try one bounded recovery when Telegram removes the assistant from a call."""
+    await asyncio.sleep(1.0)
+    error = None
+    try:
+        async with _chat_locks[chat_id]:
+            state = _sessions.get(chat_id)
+            if (
+                not state
+                or int(state.get("generation", 0)) != generation
+                or not state.get("current")
+                or not state.get("recovering")
+                or _calls is None
+            ):
+                return
+
+            if rejoin_group:
+                _resolved_chat_peers.discard(chat_id)
+                await _ensure_chat_peer(chat_id)
+
+            path = state.get("active_path")
+            if not path or not os.path.isfile(path):
+                raise RuntimeError("The cached audio file is no longer available.")
+
+            await _calls.play(
+                chat_id,
+                _audio_stream(path),
+                GroupCallConfig(auto_start=False),
+            )
+            state["generation"] = generation + 1
+            state["started_at"] = asyncio.get_running_loop().time()
+            state["paused"] = False
+            state["recovering"] = False
+            state["transitioning"] = False
+            title = state["current"].get("title", "Current track")
+            LOGGER.warning("Recovered music assistant in chat %s.", chat_id)
+        await _send_chat_message(
+            chat_id,
+            f"🔄 <b>Music connection restored.</b>\n🎵 Restarted: {escape(title)}",
+            reply_markup=player_keyboard(chat_id),
+        )
+        return
+    except Exception as exc:
+        error = exc
+        LOGGER.exception("Music assistant recovery failed in chat %s.", chat_id)
+
+    async with _chat_locks[chat_id]:
+        state = _sessions.get(chat_id)
+        if state and int(state.get("generation", 0)) == generation:
+            await _stop_chat_locked(chat_id)
+    await _send_chat_message(
+        chat_id,
+        "⚠️ <b>Music connection was interrupted.</b> "
+        "Please turn on the group voice chat and use <code>/play</code> again.",
+    )
+
+
+async def _on_chat_update(_: PyTgCalls, update) -> None:
+    """Handle assistant kicked/removed or voice chat closed by Telegram."""
+    try:
+        from pytgcalls.types import ChatUpdate
+    except ImportError:
+        return
+
+    status = update.status
+    if status & ChatUpdate.Status.LEFT_GROUP:
+        _resolved_chat_peers.discard(update.chat_id)
+
+    state = _sessions.get(update.chat_id)
+    if not state or not state.get("current"):
+        return
+
+    if status & ChatUpdate.Status.CLOSED_VOICE_CHAT:
+        LOGGER.info("Voice chat closed in %s; clearing the music session.", update.chat_id)
+        await _discard_session_after_call_end(update.chat_id)
+        await _send_chat_message(
+            update.chat_id,
+            "🎙️ <b>Voice chat ended.</b> Music queue has been stopped.",
+        )
+        return
+
+    if status & (ChatUpdate.Status.KICKED | ChatUpdate.Status.LEFT_GROUP):
+        async with _chat_locks[update.chat_id]:
+            state = _sessions.get(update.chat_id)
+            if not state or state.get("recovering"):
+                return
+            state["recovering"] = True
+            generation = int(state.get("generation", 0))
+        LOGGER.warning("Assistant disconnected from chat %s; attempting recovery.", update.chat_id)
+        asyncio.create_task(
+            _recover_disconnected_chat(
+                update.chat_id,
+                generation,
+                bool(status & ChatUpdate.Status.LEFT_GROUP),
+            )
+        )
+        return
+
+    if status & (ChatUpdate.Status.DISCARDED_CALL | ChatUpdate.Status.BUSY_CALL):
+        await _discard_session_after_call_end(update.chat_id)
+        await _send_chat_message(
+            update.chat_id,
+            "⚠️ <b>Music call disconnected.</b> Start the group voice chat and use <code>/play</code> again.",
+        )
 
 
 async def start_music() -> None:
@@ -343,6 +582,20 @@ async def start_music() -> None:
         async def _stream_end_handler(client: PyTgCalls, event: StreamEnded):
             await _on_stream_end(client, event)
 
+        try:
+            from pytgcalls.types import ChatUpdate
+
+            left_call = getattr(ChatUpdate.Status, "LEFT_CALL", None)
+            chat_update_filter = getattr(call_filters, "chat_update", None)
+            if left_call is not None and chat_update_filter is not None:
+                @_calls.on_update(chat_update_filter(left_call))
+                async def _chat_update_handler(client: PyTgCalls, event):
+                    await _on_chat_update(client, event)
+            else:
+                LOGGER.warning("PyTgCalls chat lifecycle filter is unavailable; recovery events are disabled.")
+        except ImportError:
+            LOGGER.warning("PyTgCalls ChatUpdate type is unavailable; recovery events are disabled.")
+
         await _calls.start()
         _startup_status = "ready"
         LOGGER.info("MikasaVerse voice-chat music assistant started.")
@@ -361,15 +614,8 @@ async def start_music() -> None:
 async def stop_music() -> None:
     """Close all calls and delete downloaded audio on service shutdown."""
     global _music_client, _calls, _startup_status
-    for chat_id, state in list(_sessions.items()):
-        try:
-            if _calls is not None:
-                await _calls.leave_call(chat_id)
-        except Exception:
-            LOGGER.debug("Could not leave voice chat %s during shutdown.", chat_id, exc_info=True)
-        finally:
-            await _cleanup_temp_dir(state.get("active_temp_dir"))
-    _sessions.clear()
+    for chat_id in list(_sessions):
+        await stop_chat(chat_id)
     _resolved_chat_peers.clear()
     if _music_client is not None:
         try:
