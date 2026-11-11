@@ -522,6 +522,100 @@ def get_related_tracks_sync(
         return []
 
 
+def _download_youtube_full_audio(
+    source: str,
+    temp_dir: str,
+    max_bytes: int,
+    expected_duration: int | None = None,
+) -> dict | None:
+    """Use yt-dlp + its JS challenge runtime when YT Music exposes ciphered formats."""
+    import glob
+    import os
+    import subprocess
+    import shutil
+
+    options = {
+        **_youtube_options(),
+        "format": "bestaudio/best",
+        "skip_download": False,
+        "noplaylist": True,
+        "outtmpl": os.path.join(temp_dir, "%(id)s.%(ext)s"),
+        "max_filesize": max_bytes,
+        "socket_timeout": 20,
+        "retries": 2,
+        "fragment_retries": 2,
+    }
+    with YoutubeDL(options) as ydl:
+        info = ydl.extract_info(source, download=True)
+        if info and info.get("entries"):
+            info = next((entry for entry in info["entries"] if entry), None)
+    if not info:
+        return None
+
+    requested = info.get("requested_downloads") or []
+    path = next(
+        (item.get("filepath") for item in requested if item.get("filepath")),
+        None,
+    )
+    path = path or info.get("_filename")
+    if not path or not os.path.isfile(path):
+        matches = [
+            item for item in glob.glob(os.path.join(temp_dir, "*"))
+            if os.path.isfile(item)
+        ]
+        path = max(matches, key=os.path.getsize) if matches else None
+    if not path or not os.path.isfile(path):
+        raise RuntimeError("yt-dlp did not produce a local audio file.")
+
+    size = os.path.getsize(path)
+    if size <= 0 or size > max_bytes:
+        raise RuntimeError("The extracted audio file is empty or exceeds the size limit.")
+
+    actual_duration = None
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        probe = subprocess.run(
+            [
+                ffprobe, "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if probe.returncode == 0 and probe.stdout.strip():
+            actual_duration = int(float(probe.stdout.strip()))
+
+    metadata_duration = _track_duration_seconds(info.get("duration"))
+    verified_duration = actual_duration or metadata_duration
+    if expected_duration and (
+        not verified_duration
+        or verified_duration < max(60, int(expected_duration * 0.75))
+    ):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        raise RuntimeError(
+            "yt-dlp returned an incomplete or unverified audio file "
+            f"({verified_duration or 'unknown'}s; expected about {expected_duration}s)."
+        )
+
+    return {
+        "path": path,
+        "title": info.get("title") or source,
+        "duration": verified_duration,
+        "artist": _artist_name(info),
+        "uploader": info.get("uploader"),
+        "thumbnail": _best_thumbnail(info),
+        "source": info.get("webpage_url") or source,
+        "mime_type": info.get("mime_type"),
+    }
+
+
 def _download_ytmusic_audio(
     source: str,
     temp_dir: str,
@@ -639,6 +733,28 @@ def _download_ytmusic_audio(
                 "Only a short preview was returned "
                 f"({max(preview_durations)} seconds); the full track is required."
             )
+        # YT Music can return adaptiveFormats with ciphered URLs but no direct
+        # audio URL. yt-dlp can decipher those formats when its EJS + Deno
+        # runtime is installed, so try the canonical YouTube URL before failing.
+        if direct_id:
+            try:
+                direct_source = f"https://www.youtube.com/watch?v={direct_id}"
+                LOGGER.info(
+                    "YT Music exposed no direct audio URLs for %s; trying yt-dlp full-audio extraction.",
+                    direct_id,
+                )
+                return _download_youtube_full_audio(
+                    direct_source,
+                    temp_dir,
+                    max_bytes,
+                    expected_duration,
+                )
+            except Exception as exc:
+                LOGGER.warning("yt-dlp full-audio fallback failed for %s: %s", direct_id, exc)
+                raise RuntimeError(
+                    "YouTube did not provide a verified full-length audio stream. "
+                    + str(exc)[:180]
+                ) from exc
         return None
 
     extension = ".m4a" if "audio/mp4" in selected.get("mimeType", "") else ".webm"
