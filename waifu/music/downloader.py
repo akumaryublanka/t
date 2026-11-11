@@ -45,23 +45,53 @@ def _extract(search: str) -> dict | None:
 
 
 def _ytmusic_search(query: str) -> dict | None:
-    """Find a song and metadata through the public YouTube Music catalogue."""
+    """Find a YouTube Music result only after confirming it has playable audio."""
     try:
         from ytmusicapi import YTMusic
 
         client = YTMusic(language="en", location="IN")
-        results = client.search(query, filter="songs", limit=5)
+        results = client.search(query, filter="songs", limit=10)
+        try:
+            signature_timestamp = client.get_signatureTimestamp()
+        except Exception as exc:
+            LOGGER.info("YouTube Music signature timestamp unavailable: %s", exc)
+            signature_timestamp = None
+
         for item in results:
             video_id = item.get("videoId")
             if not video_id or item.get("isAvailable") is False:
                 continue
+            try:
+                song = client.get_song(
+                    video_id,
+                    signatureTimestamp=signature_timestamp,
+                )
+                status = (song.get("playabilityStatus") or {}).get("status")
+                if status not in (None, "OK"):
+                    continue
+                formats = (song.get("streamingData") or {}).get("adaptiveFormats") or []
+                playable_audio = any(
+                    entry.get("url")
+                    and entry.get("mimeType", "").startswith("audio/")
+                    for entry in formats
+                )
+                if not playable_audio:
+                    continue
+            except Exception as exc:
+                LOGGER.debug("Skipping unplayable YouTube Music result %s: %s", video_id, exc)
+                continue
+
             artists = item.get("artists") or []
-            artist = ", ".join(a.get("name", "") for a in artists if a.get("name"))
+            artist = ", ".join(
+                artist_item.get("name", "")
+                for artist_item in artists
+                if artist_item.get("name")
+            )
             title = item.get("title") or query
             if artist:
                 title = f"{title} - {artist}"
             return {
-                "source": f"https://www.youtube.com/watch?v={video_id}",
+                "source": f"https://music.youtube.com/watch?v={video_id}",
                 "title": title,
                 "duration": item.get("duration_seconds"),
                 "uploader": artist or None,
@@ -225,6 +255,9 @@ def _download_ytmusic_audio(source: str, temp_dir: str, max_bytes: int) -> dict 
     written = 0
     with requests.get(stream_url, headers=headers, stream=True, timeout=(15, 45)) as response:
         response.raise_for_status()
+        content_type = response.headers.get("Content-Type", "").lower()
+        if "text/html" in content_type:
+            raise RuntimeError("YouTube Music returned a web page instead of audio.")
         declared_size = int(response.headers.get("Content-Length") or 0)
         if declared_size > max_bytes:
             raise ValueError("The audio file is too large for safe voice-chat playback.")
