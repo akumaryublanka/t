@@ -126,7 +126,7 @@ async def play(update: Update, context: CallbackContext) -> None:
             tracks = [await asyncio.to_thread(extract_info_sync, query)]
         await _add_tracks(update, tracks)
     except Exception as exc:
-        runtime.LOGGER.warning("Music request failed: %s", exc)
+        runtime.LOGGER.warning("Music request could not be completed: %s", exc)
         error_text = str(exc).lower()
         error_name = type(exc).__name__.lower()
         if "noactivegroupcall" in error_name or "no active group call" in error_text:
@@ -136,17 +136,11 @@ async def play(update: Update, context: CallbackContext) -> None:
                 "Pehle group mein Voice Chat ON karo, phir <code>/play</code> dobara bhejo. "
                 "Assistant khud join karke music play karega.",
             )
-        elif any(marker in error_text for marker in ("sign in to confirm", "cookies", "youtube")):
-            await reply(
-                update,
-                "⚠️ <b>YouTube ne anonymous playback block kar diya.</b>\n"
-                "Cookies ke bina doosra song title ya SoundCloud link try karo.",
-            )
         else:
             await reply(
                 update,
-                "❌ <b>Music playback start nahi ho paya.</b>\n"
-                f"<code>{escape(str(exc)[:240])}</code>",
+                "🌸 <b>Oops! Ye track abhi play nahi ho pa raha.</b>\n"
+                "Koi doosra song try karo — MikasaVerse music ke liye ready hai! 🎶",
             )
 
 

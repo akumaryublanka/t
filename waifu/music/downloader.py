@@ -140,6 +140,7 @@ def download_track_sync(source: str, max_bytes: int = 80 * 1024 * 1024) -> dict:
                 "title": (info or {}).get("title") or "Unknown track",
                 "duration": int(info["duration"]) if (info or {}).get("duration") else None,
                 "uploader": (info or {}).get("artist") or (info or {}).get("uploader"),
+                "source": (info or {}).get("webpage_url") or (info or {}).get("original_url") or source,
             }
         except Exception as exc:
             errors.append(str(exc))

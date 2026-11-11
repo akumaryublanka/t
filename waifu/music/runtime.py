@@ -162,7 +162,34 @@ async def _start_track(chat_id: int, track: dict) -> None:
     if _calls is None:
         raise RuntimeError("Music assistant is not connected.")
     await _ensure_chat_peer(chat_id)
-    downloaded = await asyncio.to_thread(download_track_sync, track["source"])
+    try:
+        downloaded = await asyncio.to_thread(download_track_sync, track["source"])
+    except Exception as source_error:
+        title = (track.get("title") or "").strip()
+        if not title or title == track.get("source"):
+            LOGGER.warning(
+                "Primary music source failed in chat %s: %s",
+                chat_id,
+                source_error,
+            )
+            raise RuntimeError("This track is temporarily unavailable.") from source_error
+        LOGGER.info(
+            "Primary source unavailable for '%s'; trying an alternate audio source.",
+            title,
+        )
+        try:
+            downloaded = await asyncio.to_thread(download_track_sync, title)
+        except Exception as fallback_error:
+            LOGGER.warning(
+                "No alternate audio source was found for '%s': %s",
+                title,
+                fallback_error,
+            )
+            raise RuntimeError("This track is temporarily unavailable.") from fallback_error
+
+    # Remember a working alternate URL so replay/favourites can reuse it.
+    if downloaded.get("source"):
+        track["source"] = downloaded["source"]
     new_temp_dir = downloaded["temp_dir"]
     try:
         # A bare file path is read as quickly as FFmpeg can produce frames.
