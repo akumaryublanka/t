@@ -481,3 +481,186 @@ def create_music_thumbnail(
 
 
 generate_thumbnail = create_music_thumbnail
+
+
+# ---------------------------------------------------------------------------
+# Sakura Moon player theme (uses the uploaded Mikasa artwork as its backdrop)
+# ---------------------------------------------------------------------------
+_LEGACY_CREATE_MUSIC_THUMBNAIL = create_music_thumbnail
+
+
+def _sakura_font(size: int, *, italic: bool = False, bold: bool = False):
+    candidates = []
+    if italic:
+        candidates.extend([
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerifCondensed-Italic.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
+            "C:/Windows/Fonts/georgiai.ttf",
+        ])
+    elif bold:
+        candidates.extend([
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "C:/Windows/Fonts/arialbd.ttf",
+        ])
+    else:
+        candidates.extend([
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            "C:/Windows/Fonts/georgia.ttf",
+        ])
+    for candidate in candidates:
+        try:
+            return ImageFont.truetype(candidate, size)
+        except OSError:
+            continue
+    return _font(size, bold)
+
+
+def _load_sakura_template() -> Optional[Image.Image]:
+    path = Path(__file__).parent / "assets" / "mikasa_sakura_player.jpg"
+    try:
+        with Image.open(path) as image:
+            image.load()
+            return ImageOps.fit(
+                image.convert("RGB"), (WIDTH, HEIGHT),
+                method=Image.Resampling.LANCZOS, centering=(0.5, 0.5),
+            )
+    except Exception:
+        return None
+
+
+def create_music_thumbnail(
+    title: str,
+    artist: str = "Unknown Artist",
+    artwork: Optional[ImageSource] = None,
+    *,
+    duration=None,
+    requester: Optional[str] = None,
+    brand: str = DEFAULT_BRAND,
+    accent_color: str = "#EE538B",
+    position=None,
+    output: Optional[Union[str, Path]] = None,
+) -> BytesIO:
+    """Render uploaded Sakura-Mikasa artwork with live track metadata."""
+    canvas_image = _load_sakura_template()
+    if canvas_image is None:
+        return _LEGACY_CREATE_MUSIC_THUMBNAIL(
+            title, artist, artwork, duration=duration, requester=requester,
+            brand=brand, accent_color=accent_color, position=position, output=output,
+        )
+
+    title = str(title or "Unknown Track").strip()
+    artist = str(artist or "Unknown Artist").strip()
+    requester = str(requester or "Unknown").strip()
+    brand = str(brand or DEFAULT_BRAND).strip().upper()
+    duration_text = _time_label(duration)
+    accent = _rgb(accent_color)
+    pale = (250, 239, 244, 255)
+    muted = (205, 190, 199, 255)
+    pink = (*accent, 255)
+    canvas = canvas_image.convert("RGBA")
+
+    # Mask the example title/player information printed into the uploaded artwork.
+    shadow = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (648, 217, 1260, 661), radius=24, fill=(0, 0, 0, 210)
+    )
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(18)))
+
+    panel = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    panel_draw = ImageDraw.Draw(panel)
+    panel_draw.rounded_rectangle(
+        (650, 220, 1254, 656), radius=22,
+        fill=(5, 5, 9, 248), outline=(*accent, 115), width=1,
+    )
+    panel_draw.line((682, 221, 1222, 221), fill=(*accent, 80), width=1)
+    canvas.alpha_composite(panel)
+    draw = ImageDraw.Draw(canvas, "RGBA")
+
+    # Restrained eyebrow and equalizer accent.
+    draw.rounded_rectangle((686, 251, 728, 254), radius=2, fill=pink)
+    draw.text((740, 239), "NOW PLAYING", font=_sakura_font(12, bold=True),
+              fill=(241, 145, 177, 255))
+    heights = [8, 14, 22, 13, 30, 17, 10, 24, 34, 18, 12, 26, 15, 9, 22, 30, 13, 18, 8]
+    for index, height in enumerate(heights):
+        x = 1080 + index * 4
+        draw.rounded_rectangle(
+            (x, 256 - height, x + 2, 256), radius=1,
+            fill=(*accent, 205 if index % 3 else 255),
+        )
+
+    title_font = _sakura_font(57, italic=True)
+    while _width(draw, title, title_font) > 530 and title_font.size > 39:
+        title_font = _sakura_font(title_font.size - 2, italic=True)
+    title_lines = _wrap(draw, title, title_font, 530, max_lines=2)
+    if len(title_lines) > 1:
+        title_font = _sakura_font(min(title_font.size, 46), italic=True)
+        title_lines = _wrap(draw, title, title_font, 530, max_lines=2)
+
+    title_y = 281
+    title_line_gap = title_font.size + 7
+    for line in title_lines:
+        draw.text((682, title_y), line, font=title_font, fill=pale)
+        title_y += title_line_gap
+    draw.line((686, title_y + 1, 1220, title_y + 1),
+              fill=(*accent, 145), width=1)
+
+    artist_font = _sakura_font(17)
+    artist_lines = _wrap(draw, artist, artist_font, 520, max_lines=2)
+    artist_y = title_y + 16
+    for line in artist_lines:
+        draw.text((688, artist_y), line, font=artist_font, fill=muted)
+        artist_y += 23
+
+    meta_y = max(artist_y + 14, 457)
+    meta_y = min(meta_y, 498)
+    draw.line((686, meta_y - 13, 1218, meta_y - 13),
+              fill=(255, 255, 255, 58), width=1)
+    draw.text((688, meta_y), "DURATION", font=_sakura_font(10, bold=True),
+              fill=(177, 151, 166, 255))
+    draw.text((688, meta_y + 19), duration_text,
+              font=_sakura_font(22, bold=True), fill=pale)
+    draw.line((842, meta_y + 1, 842, meta_y + 47),
+              fill=(255, 255, 255, 70), width=1)
+    draw.text((865, meta_y), "REQUESTED BY", font=_sakura_font(10, bold=True),
+              fill=(177, 151, 166, 255))
+    request_font = _sakura_font(20, bold=True)
+    while _width(draw, requester, request_font) > 320 and request_font.size > 14:
+        request_font = _sakura_font(request_font.size - 1, bold=True)
+    draw.text((865, meta_y + 18), requester, font=request_font, fill=pale)
+
+    # Decorative rail only; never pretend to know an elapsed playback position.
+    rail_y = 574
+    draw.rounded_rectangle((688, rail_y, 1190, rail_y + 3), radius=2,
+                           fill=(255, 255, 255, 50))
+    draw.rounded_rectangle((688, rail_y, 825, rail_y + 3), radius=2,
+                           fill=(*accent, 225))
+    draw.text((688, 588), f"{brand}  /  LISTEN · ENJOY · VIBE",
+              font=_sakura_font(9, bold=True), fill=(164, 143, 154, 245))
+
+    # Recreate the vertical Japanese signature as a small accent on the panel edge.
+    for jp_path in (
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ):
+        try:
+            jp_font = ImageFont.truetype(jp_path, 18)
+            draw.text((1219, 548), "進", font=jp_font, fill=pink)
+            draw.text((1219, 575), "撃", font=jp_font, fill=pink)
+            break
+        except OSError:
+            continue
+
+    result = BytesIO()
+    canvas.convert("RGB").save(result, format="PNG", optimize=True)
+    result.seek(0)
+    if output is not None:
+        target = Path(output)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(result.getvalue())
+        result.seek(0)
+    return result
+
+
+generate_thumbnail = create_music_thumbnail
