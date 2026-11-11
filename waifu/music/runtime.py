@@ -604,6 +604,38 @@ async def _on_chat_update(_: PyTgCalls, update) -> None:
         )
 
 
+async def _on_participant_update(_: PyTgCalls, update) -> None:
+    """Recover when Telegram removes the assistant account from the call."""
+    if _music_client is None or not _sessions.get(update.chat_id):
+        return
+    try:
+        me = getattr(_music_client, "me", None) or await _music_client.get_me()
+        if not me or update.participant.user_id != me.id:
+            return
+        from pytgcalls.types import GroupCallParticipant
+
+        if not (
+            update.action
+            & (GroupCallParticipant.Action.KICKED | GroupCallParticipant.Action.LEFT)
+        ):
+            return
+    except Exception:
+        LOGGER.debug("Could not identify assistant participant update.", exc_info=True)
+        return
+
+    async with _chat_locks[update.chat_id]:
+        state = _sessions.get(update.chat_id)
+        if not state or not state.get("current") or state.get("recovering"):
+            return
+        state["recovering"] = True
+        generation = int(state.get("generation", 0))
+
+    LOGGER.warning("Telegram removed the assistant from the call in %s.", update.chat_id)
+    asyncio.create_task(
+        _recover_disconnected_chat(update.chat_id, generation, rejoin_group=False)
+    )
+
+
 async def start_music() -> None:
     """Start the optional PyrogramMod + PyTgCalls assistant."""
     global _music_client, _calls, _startup_status
@@ -642,7 +674,7 @@ async def start_music() -> None:
             await _on_stream_end(client, event)
 
         try:
-            from pytgcalls.types import ChatUpdate
+            from pytgcalls.types import ChatUpdate, GroupCallParticipant
 
             left_call = getattr(ChatUpdate.Status, "LEFT_CALL", None)
             chat_update_filter = getattr(call_filters, "chat_update", None)
@@ -650,10 +682,20 @@ async def start_music() -> None:
                 @_calls.on_update(chat_update_filter(left_call))
                 async def _chat_update_handler(client: PyTgCalls, event):
                     await _on_chat_update(client, event)
+
+            participant_filter = getattr(call_filters, "call_participant", None)
+            if participant_filter is not None:
+                removed_actions = (
+                    GroupCallParticipant.Action.KICKED
+                    | GroupCallParticipant.Action.LEFT
+                )
+                @_calls.on_update(participant_filter(removed_actions))
+                async def _participant_handler(client: PyTgCalls, event):
+                    await _on_participant_update(client, event)
             else:
-                LOGGER.warning("PyTgCalls chat lifecycle filter is unavailable; recovery events are disabled.")
+                LOGGER.warning("PyTgCalls participant filter is unavailable; kick recovery is disabled.")
         except ImportError:
-            LOGGER.warning("PyTgCalls ChatUpdate type is unavailable; recovery events are disabled.")
+            LOGGER.warning("PyTgCalls lifecycle event types are unavailable; recovery events are disabled.")
 
         await _calls.start()
         _startup_status = "ready"
