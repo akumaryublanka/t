@@ -19,6 +19,7 @@ from waifu.music.downloader import (
 )
 from waifu.music.formatting import duration, group_only, player_keyboard, reply
 from waifu.music.thumbnail import create_music_thumbnail
+from waifu.music.mix_thumbnail import create_mix_thumbnail
 
 
 music_favorites = db["music_favorites"]
@@ -32,20 +33,15 @@ def _track_key(track: dict | None) -> str:
 
 
 def _mix_keyboard(chat_id: int, tracks: list[dict]) -> InlineKeyboardMarkup:
-    rows = []
-    for index in range(0, len(tracks), 2):
-        row = []
-        for offset in range(index, min(index + 2, len(tracks))):
-            number = offset + 1
-            row.append(InlineKeyboardButton(
-                f"{number} ▶️", callback_data=f"mv:mixpick:{chat_id}:{number}", style="primary" if number % 2 else "success"
-            ))
-        rows.append(row)
+    """Number strip and close button matching the MIKASA MIX poster reference."""
+    numbers = [
+        InlineKeyboardButton(str(index), callback_data=f"mv:mixpick:{chat_id}:{index}", style="primary")
+        for index in range(1, min(len(tracks), 5) + 1)
+    ]
+    rows = [numbers] if numbers else []
     rows.append([
-        InlineKeyboardButton("➕ Queue All", callback_data=f"mv:mixall:{chat_id}", style="success"),
-        InlineKeyboardButton("🔄 Refresh", callback_data=f"mv:mix:{chat_id}", style="primary"),
+        InlineKeyboardButton("🗑 CLOSE", callback_data=f"mv:mixclose:{chat_id}", style="success")
     ])
-    rows.append([InlineKeyboardButton("✖ Close", callback_data=f"mv:mixclose:{chat_id}", style="danger")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -616,24 +612,38 @@ async def music_controls(update: Update, context: CallbackContext) -> None:
             if oldest_chat != chat_id:
                 _MIX_CACHE.pop(oldest_chat, None)
 
-        lines = [
-            "✨ <b>MIKASA MIX</b>",
-            f"🎧 Inspired by: <b>{escape(str(seed.get('title') or 'Current track'))}</b>",
-            "",
-        ]
-        for index, track in enumerate(tracks, start=1):
-            artist = track.get("artist") or track.get("uploader") or "Unknown artist"
-            lines.append(
-                f"<b>{index}.</b> {escape(str(track.get('title') or 'Unknown track'))}\n"
-                f"   🎤 {escape(str(artist))} · {duration(track.get('duration'))}"
+        try:
+            poster = await asyncio.to_thread(
+                create_mix_thumbnail,
+                tracks=tracks[:5],
+                current_track=seed,
+                brand="MIKASAVERSE",
             )
-        lines += ["", "Choose a number to add that song to the queue."]
-        await query.message.reply_text(
-            "\n".join(lines),
-            parse_mode="HTML",
-            reply_markup=_mix_keyboard(chat_id, tracks),
-            disable_web_page_preview=True,
-        )
+            await query.message.reply_photo(
+                photo=poster,
+                caption=(
+                    "🌸 <b>MIKASA MIX</b> · Inspired by "
+                    f"<b>{escape(str(seed.get('title') or 'Now Playing'))}</b>\n"
+                    "Choose a numbered song to add it to the queue."
+                ),
+                parse_mode="HTML",
+                reply_markup=_mix_keyboard(chat_id, tracks),
+            )
+        except Exception:
+            runtime.LOGGER.exception("MIKASA MIX poster render failed in %s", chat_id)
+            lines = ["✨ <b>MIKASA MIX</b>", ""]
+            for index, track in enumerate(tracks[:5], start=1):
+                artist = track.get("artist") or track.get("uploader") or "Unknown artist"
+                lines.append(
+                    f"<b>{index}.</b> {escape(str(track.get('title') or 'Unknown track'))}\n"
+                    f"   🎤 {escape(str(artist))} · {duration(track.get('duration'))}"
+                )
+            await query.message.reply_text(
+                "\n".join(lines),
+                parse_mode="HTML",
+                reply_markup=_mix_keyboard(chat_id, tracks),
+                disable_web_page_preview=True,
+            )
         return
 
     if action in {"mixpick", "mixall"}:
