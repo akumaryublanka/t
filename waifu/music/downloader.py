@@ -136,9 +136,19 @@ def extract_info_sync(query: str) -> dict:
                 return result
         except Exception as exc:
             LOGGER.warning("Direct music link extraction failed: %s", exc)
+
+        # If anonymous yt-dlp cannot resolve a YouTube URL, pass its video ID
+        # to ytmusicapi so the audio-only endpoint can still be tried.
+        video_id = _youtube_video_id(query)
+        if video_id:
+            return {
+                "source": query,
+                "title": "YouTube track",
+                "duration": None,
+                "ytmusic_candidates": [video_id],
+            }
         raise ValueError(
-            "This link could not be played without authentication. Try a song title "
-            "or a SoundCloud link instead."
+            "This link could not be played. Try a song title or a SoundCloud link instead."
         )
 
     errors = []
@@ -338,22 +348,31 @@ def download_track_sync(
     if not source or len(source) > 2000:
         raise ValueError("A valid song source is required.")
 
-    # The ytmusicapi path returns an audio-only adaptive format URL via
-    # get_song(). This is the primary YouTube path; no browser cookies needed.
-    ytm_temp_dir = tempfile.mkdtemp(prefix="mikasa-ytmusic-")
-    try:
-        ytmusic_audio = _download_ytmusic_audio(source, ytm_temp_dir, max_bytes, ytmusic_candidates)
-        if ytmusic_audio:
-            ytmusic_audio["temp_dir"] = ytm_temp_dir
-            LOGGER.info("Prepared voice-chat audio through YouTube Music API: %s",
-                        ytmusic_audio.get("title", "Unknown track"))
-            return ytmusic_audio
-        shutil.rmtree(ytm_temp_dir, ignore_errors=True)
-    except Exception as exc:
-        shutil.rmtree(ytm_temp_dir, ignore_errors=True)
-        LOGGER.warning("YouTube Music API playback path unavailable: %s", exc)
-
     is_url = source.startswith(("http://", "https://"))
+    is_youtube_url = bool(_youtube_video_id(source))
+    # YT Music is useful for searches and YouTube links, but avoid searching a
+    # SoundCloud/Vimeo URL as though it were a song title.
+    if not is_url or is_youtube_url or ytmusic_candidates:
+        ytm_temp_dir = tempfile.mkdtemp(prefix="mikasa-ytmusic-")
+        try:
+            ytmusic_audio = _download_ytmusic_audio(
+                source,
+                ytm_temp_dir,
+                max_bytes,
+                ytmusic_candidates,
+            )
+            if ytmusic_audio:
+                ytmusic_audio["temp_dir"] = ytm_temp_dir
+                LOGGER.info(
+                    "Prepared voice-chat audio through YouTube Music API: %s",
+                    ytmusic_audio.get("title", "Unknown track"),
+                )
+                return ytmusic_audio
+            shutil.rmtree(ytm_temp_dir, ignore_errors=True)
+        except Exception as exc:
+            shutil.rmtree(ytm_temp_dir, ignore_errors=True)
+            LOGGER.warning("YouTube Music API playback path unavailable: %s", exc)
+
     if fallback_query:
         searches = [f"ytsearch1:{fallback_query}", f"scsearch1:{fallback_query}"]
     else:
