@@ -24,11 +24,16 @@ def _new_state() -> dict:
 
 
 def _playing_text(track: dict, queued: int = 0) -> str:
+    artist = track.get("artist") or track.get("uploader")
     text = (
         "🎶 <b>MIKASAVERSE · NOW PLAYING</b>\n"
-        f"🎧 {escape(track['title'])}\n"
-        f"⏱️ {duration(track.get('duration'))}\n"
-        f"👤 Requested by {escape(track.get('requested_by', 'Unknown'))}"
+        f"🎧 {escape(track['title'])}"
+    )
+    if artist and str(artist).strip().lower() not in str(track["title"]).strip().lower():
+        text += f"\n🎤 {escape(str(artist))}"
+    text += (
+        f"\n⏱️ {duration(track.get('duration'))}"
+        f"\n👤 Requested by {escape(track.get('requested_by', 'Unknown'))}"
     )
     if queued:
         text += f"\n\n➕ Added <b>{queued}</b> more track(s) to the queue."
