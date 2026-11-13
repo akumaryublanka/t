@@ -92,27 +92,6 @@ BOT_COMMANDS = [
     BotCommand("scramble", "🔤 Unscramble an anime character name"),
     BotCommand("scramble_stop", "⏹️ Stop the scramble round"),
 
-    # 🎵 Voice chat music
-    BotCommand("play", "🎵 Play or queue a song in voice chat"),
-    BotCommand("vplay", "🎬 Play a video with audio in voice chat"),
-    BotCommand("pause", "⏸️ Pause voice chat music"),
-    BotCommand("resume", "▶️ Resume voice chat music"),
-    BotCommand("skip", "⏭️ Skip the current track"),
-    BotCommand("end", "⏹️ Stop music and clear the queue"),
-    BotCommand("queue", "📃 View the music queue"),
-    BotCommand("current", "🎧 Show the current track"),
-    BotCommand("replay", "🔁 Replay the current track"),
-    BotCommand("loop", "🔂 Repeat the current track 0-10 times"),
-    BotCommand("shuffle", "🔀 Shuffle upcoming tracks"),
-    BotCommand("clearqueue", "🧹 Clear upcoming tracks"),
-    BotCommand("remove", "🗑️ Remove a queued track by position"),
-    BotCommand("move", "↕️ Move a queued track to another position"),
-    BotCommand("volume", "🔊 Change music volume"),
-    BotCommand("song", "⬇️ Download a song as audio"),
-    BotCommand("favorite", "❤️ Save the current music track"),
-    BotCommand("favs", "💖 View your saved music favourites"),
-    BotCommand("playfav", "▶️ Play a saved music favourite"),
-    BotCommand("delfav", "🗑️ Delete a saved music favourite"),
 ]
 
 
