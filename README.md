@@ -65,13 +65,9 @@
     </td>
   </tr>
   <tr>
-    <td width="50%">
-      <h3>🎵 Voice Chat Music</h3>
-      Playlist-aware voice-chat playback, interactive player buttons, queue shuffle/clear, repeat/replay, pause/resume, skip, volume control, and automatic leave when playback ends.
-    </td>
-    <td width="50%">
+<td width="50%">
       <h3>🌸 MikasaVerse</h3>
-      Built for group communities with a separate, secure assistant account for voice-chat streaming.
+      A community-focused anime character collection experience for Telegram groups.
     </td>
   </tr>
 </table>
@@ -201,21 +197,9 @@ python -m waifu
 | `UPDATE_CHAT` | No | Updates channel username |
 | `PHOTO_URLS` | No | Comma-separated fallback image URLs |
 | `DROP_INTERVAL_MINUTES` | No | Timed drop interval; default: `15` |
-| `DEFAULT_MSG_FREQUENCY` | No | Messages between drops; default: `20` |\n| `MUSIC_API_ID` | Music only | Telegram API ID from my.telegram.org |\n| `MUSIC_API_HASH` | Music only | Telegram API hash from my.telegram.org |\n| `MUSIC_SESSION_STRING` | Music only | Private Pyrogram session string for a separate Telegram user account |
+| `DEFAULT_MSG_FREQUENCY` | No | Messages between drops; default: `20` |
 
 The module loader may also support `LOAD_MODULES` and `NO_LOAD_MODULES`, depending on the current implementation. Several mini-games are restricted to a configured group ID in code.
-
-### 🎵 Voice chat music setup
-
-The music player uses PyTgCalls with a separate Telegram **user account** as its voice-chat assistant. It cannot use the regular Bot API token as the voice-chat session.
-
-1. Create Telegram API credentials at [my.telegram.org](https://my.telegram.org).
-2. Generate a Pyrogram session string for a dedicated Telegram user account on a trusted device.
-3. Add `MUSIC_API_ID`, `MUSIC_API_HASH`, and `MUSIC_SESSION_STRING` to the Render service Environment as secret values.
-4. Add the assistant account to the same group. The main MikasaVerse bot needs **Invite Users** permission to create a temporary invite link; the assistant itself does not need admin rights.
-5. Restart/redeploy the service after setting the variables.
-
-**Never post your session string in chat, commit it to GitHub, or share it with anyone.** If the music variables are not set, the main MikasaVerse bot still starts normally and music commands explain that setup is required. Render's native Python runtime already includes FFmpeg and FFprobe.
 
 ## 🎮 How a catch works
 
@@ -287,33 +271,6 @@ Commands may require a reply, group context, or owner/sudo permissions. Availabi
 </details>
 
 <details>
-<summary><b>🎵 Voice Chat Music</b></summary>
-
-| Command | What it does |
-|---|---|
-| `/play song name, YouTube link, or playlist link` | Play a song or queue up to 20 playlist tracks |
-| `/pause`, `/resume` | Pause or resume playback |
-| `/skip` | Play the next queued track |
-| `/current`, `/replay` | View or restart the current track |
-| `/loop 0-10` | Repeat the current track; 0 disables repeat |
-| `/shuffle` | Shuffle upcoming tracks |
-| `/clearqueue` | Clear upcoming tracks without stopping the current song |
-| `/remove position` | Remove one upcoming track |
-| `/move from to` | Move an upcoming track to another position |
-| `/end` | Stop playback, clear the queue and leave voice chat |
-| `/queue` | Show the current track and upcoming tracks |
-| `/volume 1-200` | Change volume |
-| `/song query` | Download a song as an MP3 audio file |
-| `/favorite` | Save the current track to personal favourites |
-| `/favs` | View saved favourites |
-| `/playfav number` | Queue a saved favourite |
-| `/delfav number` | Delete a saved favourite |
-
-The assistant account is configured separately and can join a group automatically using a temporary invite. The main bot needs Invite Users permission; the assistant does not need to be an admin. The player also includes inline controls, playlist queueing, loop/replay, shuffle and queue clearing. YouTube anonymous extraction can still be blocked by YouTube; playlist and track availability is not guaranteed. Song downloads are sent as MP3 audio files, and personal favourite tracks are stored in MongoDB. Download and playback availability still depends on the source platform allowing anonymous extraction.
-
-</details>
-
-<details>
 <summary><b>🤝 Social & battles</b></summary>
 
 | Command | What it does |
@@ -347,7 +304,7 @@ The assistant account is configured separately and can join a group automaticall
 
 </details>
 
-The music feature set is adapted for MikasaVerse's current Telegram/PyTgCalls stack from ideas and selected functionality in [The-HellBot/Music](https://github.com/The-HellBot/Music). See [`waifu/music/UPSTREAM_CREDITS.md`](waifu/music/UPSTREAM_CREDITS.md) and the included GPL-3.0-or-later license for attribution and terms.\n\n## 🧱 Built with
+## 🧱 Built with
 
 <p>
   <img src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python"/>

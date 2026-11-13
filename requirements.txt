@@ -6,9 +6,3 @@ cachetools==5.3.2
 aiohttp>=3.9.3,<4
 apscheduler==3.10.4
 Pillow>=10.4.0
-pyrogrammod>=2.1.2,<3
-py-tgcalls==2.3.3
-yt-dlp[default]>=2025.1.15
-deno==2.9.8
-ytmusicapi==1.12.3
-imageio-ffmpeg>=0.5.1,<1

@@ -1,5 +1,0 @@
-"""Shared user-facing music messages."""
-NOW_PLAYING = "🎶 MIKASAVERSE · NOW PLAYING"
-QUEUE_EMPTY = "🎵 The music queue is empty."
-VOICE_CHAT_OFF = "🎙️ Voice Chat abhi OFF hai. Pehle group mein Voice Chat ON karo."
-ATTRIBUTION = "Music powered by MikasaVerse"
